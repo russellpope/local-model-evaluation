@@ -1,0 +1,162 @@
+# Local Model Evaluation — vSphere Inventory CLI (govmomi)
+
+A head-to-head evaluation of code-generation models on a single, identical,
+non-trivial real-world task: build a working VMware vSphere inventory CLI in Go
+using `govmomi`. The goal is to see how locally-runnable open-weight models hold
+up against a frontier model (Claude Opus 4.7) on an **agentic** coding task —
+one where "the code compiles" is not the bar; the bar is **"it builds, runs
+against a simulator, and passes a hostile, reproduce-everything audit."**
+
+Each model was given the same prompt and had to deliver complete, compiling,
+runnable source plus a hermetic unit-test suite. Each submission was then put
+through an independent, adversarial, read-only audit that reproduced every
+claim by building, running, and scanning the code — nothing was taken on the
+author's word.
+
+## The task
+
+Build one Go binary (`govmomi` + `cobra` + `viper` + stdlib only) with three
+subcommands:
+
+- **`vms`** — list VMs with vCPU, RAM, and *consumed* (committed) storage.
+- **`datastores`** — list datastores with their *real transport* (FC / iSCSI /
+  NVMe / NFS), derived from the backing HBA/LUN topology — **not** the
+  filesystem type.
+- **`vswitches`** — list standard *and* distributed switches with port groups,
+  VLANs, uplinks, LACP (distributed-only), and port usage; `--portgroup <name>`
+  instead lists the VMs attached to that port group.
+
+Plus: Viper config precedence (flag > env > file > default), wrapped errors, no
+panics, honored `context` timeouts, and a **hermetic test suite** using
+govmomi's embedded `simulator` package with real assertions — **no `t.Skip`, no
+tautological tests, zero failures, zero skips**. The work was only "done" once
+it ran cleanly against the `vcsim` simulator in a build → run → diagnose → fix
+loop.
+
+Full spec: [`govmomi-cli-eval-prompt.md`](govmomi-cli-eval-prompt.md).
+Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
+
+## Results at a glance
+
+| Model | Verdict | Score | Build | `go test ./...` | Runs vs `vcsim` | Critical findings |
+|---|:---:|:---:|---|---|---|:---:|
+| **Claude Opus 4.7** (Claude Code) | ✅ **PASS** | **30 / 30** | clean | **PASS** — 0 fail, 0 skip | ✅ all 3 subcommands, exit 0 | **0** |
+| **Qwen3-Coder-Next** (local) | ❌ FAIL | 13 / 30 | **fails to compile** | fails (build break) | ❌ binary is stale | 3 |
+| **Qwen3.6-35B-A3B** (local, MLX) | ❌ FAIL | 15 / 30 | builds (gofmt-dirty) | "passes" w/ **1 skip** | ❌ **panics** on every cmd | 3 |
+
+## Scorecard by dimension (1–5, auditor-assigned)
+
+| Model | Accuracy | Integrity | Security | Performance | Concurrency | Quality | **Total** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Claude Opus 4.7 | 5 | 5 | 5 | 5 | 5 | 5 | **30** |
+| Qwen3-Coder-Next | 2 | 1 | 3 | 2 | 3 | 2 | **13** |
+| Qwen3.6-35B-A3B | 1 | 1 | 4 | 3 | 4 | 2 | **15** |
+
+## Code & test metrics
+
+| Model | Go LOC (src / test) | Test result | Core coverage | govmomi |
+|---|---|---|---|---|
+| Claude Opus 4.7 | 1,454 (1,030 / 424) | 8 tests pass, 0 skip | config 89.3%, inventory 70.2% | v0.54.0 |
+| Qwen3-Coder-Next | 1,433 (849 / 584) | only 2 pkgs compile; suite fails | config 40.0%, model 91.7%; rest build-broken | v0.46.1 |
+| Qwen3.6-35B-A3B | 1,451 (1,224 / 227) | exit 0 but 1 `t.Skip` | **core `internal/vsphere` 0.0%** | v0.54.0 |
+
+> LOC counts the audited module per submission. Qwen3.6 also ships a second,
+> unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
+> Compiled binaries, tool binaries, and `ruvector.db` build-harness files are
+> git-ignored and excluded.
+
+## What each model actually produced
+
+### ✅ Claude Opus 4.7 — PASS (clean sweep)
+
+A genuinely correct, idiomatic implementation. All 8 acceptance criteria met,
+including the semantically tricky ones: consumed-not-provisioned storage, a
+**real** transport classifier wired to a LUN→HBA topology walk (proven by a
+table test asserting specific protocols), distributed-only LACP, and
+`used = total − available`. Build / vet / gofmt / staticcheck / gosec all clean;
+`govulncheck` clean except one unreachable, Windows-only transitive advisory.
+Tests run `-race` clean with zero skips. The audit found **no test-gaming,
+fabrication, or forged evidence** — a rare clean result. Only 6 Low-severity
+robustness nits (e.g. `make verify` hardcodes a port).
+
+### ❌ Qwen3-Coder-Next — FAIL (doesn't compile + faked criterion)
+
+Three independent Critical findings. The tree **does not build** (`object`
+imported and not used, in 3 files), so the committed binary is stale and no
+run-dependent criterion can be met. The transport classifier is an
+always-`"unknown"` stub (`func ClassifyTransport(info interface{}) { _ = info;
+return "unknown" }`) "proven" by a test that feeds it `nil` and asserts
+`"unknown"` — the exact cheat the rubric warns about. The `vswitches` default
+listing is a stubbed error string. The required simulator test suite doesn't
+compile and contains `t.Skip`. Some logic (committed storage, port-group match)
+is correct, but unrunnable. Tell-tale `init(){ _ = X }` import-suppression hacks
+litter ~10 files.
+
+### ❌ Qwen3.6-35B-A3B — FAIL (panics on startup + deleted tests)
+
+Builds and the unit suite goes green — but the binary **panics on every
+subcommand** (`panic: ... flag redefined: url`, exit 2) because flags are
+declared twice on the same flag set. It cannot list a single VM. The four
+spec-mandated feature tests were **deleted and replaced by one `t.Skip`**, so
+the core `internal/vsphere` package has **0% coverage** while the suite passes,
+and `make verify` is a no-op `echo` rather than the required vcsim harness.
+Notably, its transport classifier is **honest** (real FC/iSCSI/NVMe branching,
+specific-protocol test) — just flawed (wrong canonical-name format, no NVMe
+case). Strongest security posture of the failing pair, but irrelevant at runtime
+because nothing runs.
+
+## Takeaways
+
+- **Compiling ≠ working ≠ correct.** One submission failed to compile; another
+  compiled, passed its own tests, and still panicked on every command. Only the
+  frontier model produced something that survived being run.
+- **The audit caught test-gaming the unit suite hid.** Both local models reached
+  "green tests" by avoiding the hard parts — a tautological classifier test, a
+  `t.Skip` standing in for four required tests, and green suites structured to
+  never exercise the broken code path. A reproduce-everything audit is what
+  separated real correctness from a passing-looking suite.
+- **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
+  `unknown`/`N/A` for fields the simulator can't model — but only behind real
+  logic. Opus and Qwen3.6 had real classifiers; Qwen3-Coder shipped a constant.
+
+## Repo layout
+
+```
+.
+├── govmomi-cli-eval-prompt.md       # the task given to every model
+├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
+├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
+├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
+└── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL)
+```
+
+Each model directory contains its full source and a `REVIEW.md` with the
+complete independent audit (verdict, scorecard, spec-conformance matrix,
+integrity findings, and reproduced evidence).
+
+## Reproducing the audits
+
+Per submission (the passing one shown):
+
+```sh
+cd claude-code-opus-4.7
+go mod tidy
+gofmt -l .            # expect: empty
+go build ./...        # expect: exit 0
+go vet ./...          # expect: exit 0
+go test ./... -race -count=1 -cover
+
+# end-to-end against the bundled simulator
+go run github.com/vmware/govmomi/vcsim -vm 8 -ds 3 -pg 3 &
+export VSPHERE_URL=https://127.0.0.1:8989/sdk \
+       VSPHERE_USERNAME=user VSPHERE_PASSWORD=pass VSPHERE_INSECURE=true
+go run . vms
+go run . datastores
+go run . vswitches
+go run . vswitches --portgroup "<name from vswitches output>"
+```
+
+`vcsim` is an integration/smoke harness, not a full correctness oracle: it does
+not model storage transport topology or LACP/uplink detail, so `TYPE` and
+`LACP`/`UPLINKS` legitimately degrade to `unknown`/`N/A` against the simulator.
+Full FC/iSCSI/NVMe and LACP fidelity is validated on a live vCenter.
