@@ -1,0 +1,17 @@
+# OS / IDE
+.DS_Store
+.idea/
+
+# Compiled binaries & Go test binaries
+vsphere-inventory
+*.test
+*.exe
+*.out
+
+# Compiled tool binaries
+bin/
+.audit-tools/
+/qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/vsphere-cli/vsphere-cli
+
+# Vector DB / evaluation artifacts
+ruvector.db

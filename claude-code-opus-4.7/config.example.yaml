@@ -1,0 +1,18 @@
+# Example configuration for vsphere-inventory.
+#
+# Pass this file with --config /path/to/config.yaml. Every key is optional.
+# Resolution precedence (highest first): command-line flag > environment
+# variable (VSPHERE_*) > this file > built-in default.
+
+# vCenter URL or host. A bare host is accepted; /sdk is appended automatically.
+url: https://vcenter.example.com/sdk
+
+username: administrator@vsphere.local
+password: "change-me"
+
+# Skip TLS certificate verification. Required for the self-signed vcsim
+# simulator; leave false against a properly-certified vCenter.
+insecure: false
+
+# Overall operation timeout (Go duration syntax, e.g. 30s, 2m).
+timeout: 60s
