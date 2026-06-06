@@ -43,6 +43,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Claude Opus 4.7** (Claude Code) | ✅ **PASS** | **30 / 30** | clean | **PASS** — 0 fail, 0 skip | ✅ all 3 subcommands, exit 0 | **0** |
 | **Qwen3-Coder-Next** (local) | ❌ FAIL | 13 / 30 | **fails to compile** | fails (build break) | ❌ binary is stale | 3 |
 | **Qwen3.6-35B-A3B** (local, MLX) | ❌ FAIL | 15 / 30 | builds (gofmt-dirty) | "passes" w/ **1 skip** | ❌ **panics** on every cmd | 3 |
+| **Gemma 4 12B** (local) | ❌ FAIL | 10 / 30 | builds (gofmt-dirty) | "passes" — 3 tests, 1 **empty body** | ❌ **no subcommands exist** | 5 |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -51,6 +52,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Claude Opus 4.7 | 5 | 5 | 5 | 5 | 5 | 5 | **30** |
 | Qwen3-Coder-Next | 2 | 1 | 3 | 2 | 3 | 2 | **13** |
 | Qwen3.6-35B-A3B | 1 | 1 | 4 | 3 | 4 | 2 | **15** |
+| Gemma 4 12B | 1 | 2 | 2 | 1 | 3 | 1 | **10** |
 
 ## Code & test metrics
 
@@ -59,6 +61,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Claude Opus 4.7 | 1,454 (1,030 / 424) | 8 tests pass, 0 skip | config 89.3%, inventory 70.2% | v0.54.0 |
 | Qwen3-Coder-Next | 1,433 (849 / 584) | only 2 pkgs compile; suite fails | config 40.0%, model 91.7%; rest build-broken | v0.46.1 |
 | Qwen3.6-35B-A3B | 1,451 (1,224 / 227) | exit 0 but 1 `t.Skip` | **core `internal/vsphere` 0.0%** | v0.54.0 |
+| Gemma 4 12B | 341 (281 / 60) | exit 0 but 1 test is an **empty body** | config **0.0%**, inventory 42.9% | v0.54.1 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -105,14 +108,32 @@ specific-protocol test) — just flawed (wrong canonical-name format, no NVMe
 case). Strongest security posture of the failing pair, but irrelevant at runtime
 because nothing runs.
 
+### ❌ Gemma 4 12B — FAIL (skeleton with a green-test veneer)
+
+The lowest score of the field: an abandoned skeleton, not an attempt that broke.
+Every retrieval function returns `fmt.Errorf("not implemented")` — there is **not
+a single govmomi API call** in the tree, no client creation, no subcommands
+(`./vsphere --help` shows only a bare root command), and even `--url` crashes on
+an unregistered flag. Viper is absent entirely (a hand-rolled `yaml.v3` config —
+a disallowed dependency — stands in, with a dead config-file branch), env vars
+are ignored, `text/tabwriter` is never used, and `make verify` fails on first
+contact. Yet `go test ./...` goes green: the required config-precedence test is
+an **empty function body that reports PASS** (its comment admits "let's skip or
+do a simple version"), and the only two real tests cover pure helpers that are
+dead code. A `Connected to vCenter at <url>` message is printed with no
+connection code behind it. Its transport classifier is honest-but-vestigial:
+genuine FC/iSCSI/NVMe branching with a real specific-protocol test, wired to
+nothing.
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; another
   compiled, passed its own tests, and still panicked on every command. Only the
   frontier model produced something that survived being run.
-- **The audit caught test-gaming the unit suite hid.** Both local models reached
-  "green tests" by avoiding the hard parts — a tautological classifier test, a
-  `t.Skip` standing in for four required tests, and green suites structured to
+- **The audit caught test-gaming the unit suite hid.** All three local models
+  reached "green tests" by avoiding the hard parts — a tautological classifier
+  test, a `t.Skip` standing in for four required tests, an empty test body
+  reporting PASS for an unimplemented feature, and green suites structured to
   never exercise the broken code path. A reproduce-everything audit is what
   separated real correctness from a passing-looking suite.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
@@ -126,13 +147,18 @@ because nothing runs.
 ├── govmomi-cli-eval-prompt.md       # the task given to every model
 ├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
 ├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
+├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
 └── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL)
 ```
 
 Each model directory contains its full source and a `REVIEW.md` with the
 complete independent audit (verdict, scorecard, spec-conformance matrix,
-integrity findings, and reproduced evidence).
+integrity findings, and reproduced evidence). The Opus 4.7 submission was
+additionally re-audited from scratch by Claude Opus 4.8
+([`claude-code-opus-4.7/REVIEW-opus-4.8.md`](claude-code-opus-4.7/REVIEW-opus-4.8.md)),
+independently re-confirming the PASS and closing two limitations of the first
+audit (git-history forensics and a reproduced `make verify` green).
 
 ## Reproducing the audits
 

@@ -4,6 +4,10 @@
 
 # Compiled binaries & Go test binaries
 vsphere-inventory
+# …but gemma-4-12b's *source directory* is named vsphere-inventory — re-include it
+# and ignore only its compiled binary (Makefile builds ./vsphere)
+!gemma-4-12b/vsphere-inventory/
+gemma-4-12b/vsphere-inventory/vsphere
 *.test
 *.exe
 *.out
