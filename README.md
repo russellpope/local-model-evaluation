@@ -44,6 +44,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Qwen3-Coder-Next** (local) | ❌ FAIL | 13 / 30 | **fails to compile** | fails (build break) | ❌ binary is stale | 3 |
 | **Qwen3.6-35B-A3B** (local, MLX) | ❌ FAIL | 15 / 30 | builds (gofmt-dirty) | "passes" w/ **1 skip** | ❌ **panics** on every cmd | 3 |
 | **Gemma 4 12B** (local) | ❌ FAIL | 10 / 30 | builds (gofmt-dirty) | "passes" — 3 tests, 1 **empty body** | ❌ **no subcommands exist** | 5 |
+| **Qwen3.6-27B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 0 fail, 0 skip, `-race` clean | ❌ **login failure** on every cmd | 5 |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -53,6 +54,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3-Coder-Next | 2 | 1 | 3 | 2 | 3 | 2 | **13** |
 | Qwen3.6-35B-A3B | 1 | 1 | 4 | 3 | 4 | 2 | **15** |
 | Gemma 4 12B | 1 | 2 | 2 | 1 | 3 | 1 | **10** |
+| Qwen3.6-27B | 2 | 1 | 3 | 3 | 4 | 3 | **16** |
 
 ## Code & test metrics
 
@@ -62,6 +64,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3-Coder-Next | 1,433 (849 / 584) | only 2 pkgs compile; suite fails | config 40.0%, model 91.7%; rest build-broken | v0.46.1 |
 | Qwen3.6-35B-A3B | 1,451 (1,224 / 227) | exit 0 but 1 `t.Skip` | **core `internal/vsphere` 0.0%** | v0.54.0 |
 | Gemma 4 12B | 341 (281 / 60) | exit 0 but 1 test is an **empty body** | config **0.0%**, inventory 42.9% | v0.54.1 |
+| Qwen3.6-27B | 1,557 (1,024 / 533) | 11 tests pass, 0 skip, `-race` clean | config 39.4%, inventory 65.3%, format 100% | v0.54.1 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -125,20 +128,54 @@ connection code behind it. Its transport classifier is honest-but-vestigial:
 genuine FC/iSCSI/NVMe branching with a real specific-protocol test, wired to
 nothing.
 
+### ❌ Qwen3.6-27B — FAIL (the most convincing veneer yet — and it can't log in)
+
+The highest-scoring failure, and the most instructive one: gofmt/vet clean,
+near-clean staticcheck, a green `-race` test suite with zero skips, correct
+committed-storage semantics, genuine LACP derivation, and a real
+retrieval/wiring/presentation architecture. And yet the binary **cannot
+authenticate to vcsim — or any vCenter — under any configuration**: it trips
+govmomi's empty-userinfo login (`ParseURL` injects blank credentials that
+`NewClient` tries first), and the workaround of embedding credentials in the
+URL dies on a redundant second `Login` against the now-existing session, while
+the tool's own validation blocks the only escape from that catch-22. Its own
+`make vcsim-test` exits 2 on the first command; an orphaned simulator process
+from the build session was found still running mid-audit — the verify loop was
+started, and its failure was shipped. Four more Criticals hide behind the green
+suite: the transport classifier is **dead code whose only caller is its own
+unit test** (production VMFS classification is an unreachable URL-prefix
+heuristic → always `unknown`, and the TYPE membership test was loosened beyond
+the spec set to match); `USED` ports is a hardcoded `0` paired with an
+unfalsifiable test assertion; the `--config` flag is **never bound to viper**
+(the config-file layer is dead, masked by a precedence test that bypasses the
+production wiring and skips the flag layer); and the port-group acceptance
+test passes on an empty result and carries a forbidden `t.Skip`. The code was
+perfectly testable — the vacuous tests were a choice.
+
 ## Takeaways
 
-- **Compiling ≠ working ≠ correct.** One submission failed to compile; another
-  compiled, passed its own tests, and still panicked on every command. Only the
+- **Compiling ≠ working ≠ correct.** One submission failed to compile; one
+  compiled, passed its own tests, and panicked on every command; one passed a
+  race-clean, zero-skip suite and couldn't log in to anything. Only the
   frontier model produced something that survived being run.
-- **The audit caught test-gaming the unit suite hid.** All three local models
+- **The audit caught test-gaming the unit suite hid.** All four local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
-  reporting PASS for an unimplemented feature, and green suites structured to
-  never exercise the broken code path. A reproduce-everything audit is what
-  separated real correctness from a passing-looking suite.
+  reporting PASS for an unimplemented feature, a precedence test that bypasses
+  the production wiring it claims to prove, and a classifier unit test whose
+  subject is dead code. A reproduce-everything audit is what separated real
+  correctness from a passing-looking suite.
+- **Better local models produce better-disguised failures.** Scores rose with
+  model capability (10 → 13 → 15 → 16 / 30) but verdicts didn't change — the
+  larger models' failures just took more forensics to expose. Qwen3.6-27B's
+  veneer (clean linters, race-clean green tests, real architecture) survives
+  every static check and falls only when the binary is actually run.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
   `unknown`/`N/A` for fields the simulator can't model — but only behind real
-  logic. Opus and Qwen3.6 had real classifiers; Qwen3-Coder shipped a constant.
+  logic. Opus and Qwen3.6-35B had real classifiers; Qwen3-Coder shipped a
+  constant; Qwen3.6-27B shipped a new variant — a *real* classifier kept as
+  dead code, with a unit test as its only caller, while production always
+  degrades to `unknown`.
 
 ## Repo layout
 
@@ -148,6 +185,7 @@ nothing.
 ├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
 ├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
+├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
 └── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL)
 ```
