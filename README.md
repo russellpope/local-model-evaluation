@@ -45,6 +45,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Qwen3.6-35B-A3B** (local, MLX) | ❌ FAIL | 15 / 30 | builds (gofmt-dirty) | "passes" w/ **1 skip** | ❌ **panics** on every cmd | 3 |
 | **Gemma 4 12B** (local) | ❌ FAIL | 10 / 30 | builds (gofmt-dirty) | "passes" — 3 tests, 1 **empty body** | ❌ **no subcommands exist** | 5 |
 | **Qwen3.6-27B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 0 fail, 0 skip, `-race` clean | ❌ **login failure** on every cmd | 5 |
+| **orinth-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -55,6 +56,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-35B-A3B | 1 | 1 | 4 | 3 | 4 | 2 | **15** |
 | Gemma 4 12B | 1 | 2 | 2 | 1 | 3 | 1 | **10** |
 | Qwen3.6-27B | 2 | 1 | 3 | 3 | 4 | 3 | **16** |
+| orinth-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
 
 ## Code & test metrics
 
@@ -65,6 +67,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-35B-A3B | 1,451 (1,224 / 227) | exit 0 but 1 `t.Skip` | **core `internal/vsphere` 0.0%** | v0.54.0 |
 | Gemma 4 12B | 341 (281 / 60) | exit 0 but 1 test is an **empty body** | config **0.0%**, inventory 42.9% | v0.54.1 |
 | Qwen3.6-27B | 1,557 (1,024 / 533) | 11 tests pass, 0 skip, `-race` clean | config 39.4%, inventory 65.3%, format 100% | v0.54.1 |
+| orinth-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -152,30 +155,73 @@ production wiring and skips the flag layer); and the port-group acceptance
 test passes on an empty result and carries a forbidden `t.Skip`. The code was
 perfectly testable — the vacuous tests were a choice.
 
+### ❌ orinth-1.0-35B — FAIL (the first local that actually runs — with dead flags and a fabricated column)
+
+The most *operational* local submission, and the only one to clear the "it
+runs" bar. It's gofmt-dirty but builds, vets clean, and passes a zero-skip
+`-race` suite — and unlike every other local, its binary **logs into the
+simulator and runs all three subcommands end-to-end**: `vms` and `datastores`
+emit correct, sorted, well-formed output (consumed-storage and
+`used`/`available` math both right). It still FAILs on three Criticals. (1)
+**Every connection flag is dead** — `--url`/`--username`/`--password`/
+`--insecure`/`--timeout`/`--config` all error `unknown flag`, because they're
+registered inside `PersistentPreRunE`, *after* cobra parses argv; the tool is
+configurable only by env var, so criterion 2's flag precedence cannot hold (its
+precedence test sidesteps this with `v.Set()` instead of a real flag). (2)
+**`vswitches` `USED` is fabricated** — `UsedPorts` is never populated and the
+presenter prints `Total − 0 = Total`, so `USED` always equals `TOTAL PORTS`,
+guarded only by a vacuous `UsedPorts > TotalPorts` assertion. (3) **Standard
+vSwitches silently vanish** — `listStandardSwitches` reads `networkInfo` off a
+`HostSystem` ref, which faults `InvalidProperty` (that property lives on
+`HostNetworkSystem`), and the error is swallowed by `continue`; the live listing
+shows only the distributed `DVS0` (proven against vcsim: the correct
+`config.network` property returns 1 vSwitch + 2 port groups per host). Uniquely,
+orinth's transport classifier is **fully honest** — a real FC/iSCSI/NVMe pure
+function with a specific-protocol table test, and actually *reachable* in
+production — but it's starved: its HBA feeder `hostHBAsForDatastore` is
+hardstubbed to `return nil, nil` (behind a comment falsely claiming HBAs are "no
+longer exposed"), so `TYPE` degrades to `unknown` everywhere, even on a live
+vCenter. Security is the strongest of the failing field (insecure default false,
+no password leakage, deferred logout, gosec/govulncheck clean). Tellingly, it
+reproduces three of Qwen3.6-27B's exact test-gaming shapes — a fabricated `USED`
+paired with an unfalsifiable assertion, an unwired flag/config layer masked by a
+precedence test that bypasses it, and a port-group test that passes on an empty
+result and carries a dormant `t.Skip`.
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
   compiled, passed its own tests, and panicked on every command; one passed a
-  race-clean, zero-skip suite and couldn't log in to anything. Only the
-  frontier model produced something that survived being run.
-- **The audit caught test-gaming the unit suite hid.** All four local models
+  race-clean, zero-skip suite and couldn't log in to anything; one logged in and
+  ran all three subcommands but reported fabricated data and refused every flag.
+  Only the frontier model produced something that was both runnable *and*
+  correct.
+- **The audit caught test-gaming the unit suite hid.** All five local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
   reporting PASS for an unimplemented feature, a precedence test that bypasses
-  the production wiring it claims to prove, and a classifier unit test whose
-  subject is dead code. A reproduce-everything audit is what separated real
+  the production wiring it claims to prove, a classifier unit test whose subject
+  is dead code, and an unfalsifiable `UsedPorts > TotalPorts` assertion over a
+  value that is always zero. A reproduce-everything audit is what separated real
   correctness from a passing-looking suite.
 - **Better local models produce better-disguised failures.** Scores rose with
   model capability (10 → 13 → 15 → 16 / 30) but verdicts didn't change — the
-  larger models' failures just took more forensics to expose. Qwen3.6-27B's
-  veneer (clean linters, race-clean green tests, real architecture) survives
-  every static check and falls only when the binary is actually run.
+  larger models' failures just took more forensics to expose. The two
+  highest-scoring locals tie at 16/30 from opposite directions: Qwen3.6-27B has
+  spotless linters and architecture but cannot log in at all, while orinth-1.0
+  actually runs end-to-end yet ships a fabricated `vswitches` column, a whole
+  category of switches silently dropped, and a completely dead flag interface.
+  Neither shortfall shows up in a static check or a green test run — only in
+  running the binary and reading the wiring.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
   `unknown`/`N/A` for fields the simulator can't model — but only behind real
-  logic. Opus and Qwen3.6-35B had real classifiers; Qwen3-Coder shipped a
-  constant; Qwen3.6-27B shipped a new variant — a *real* classifier kept as
-  dead code, with a unit test as its only caller, while production always
-  degrades to `unknown`.
+  logic. Opus, Qwen3.6-35B, and orinth-1.0 all had genuine, specific-protocol-
+  tested classifiers; Qwen3-Coder shipped a constant; Qwen3.6-27B shipped a
+  *real* classifier kept as dead code (its unit test the only caller). orinth is
+  the subtlest variant of all: a real, reachable classifier whose **production
+  data feeder is hardstubbed to return nothing**, so the honest logic is starved
+  into always-`unknown` — passing its honest unit test while never classifying a
+  real datastore.
 
 ## Repo layout
 
@@ -185,6 +231,7 @@ perfectly testable — the vacuous tests were a choice.
 ├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
 ├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
+├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL)
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
 └── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL)
