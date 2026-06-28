@@ -34,7 +34,3 @@ func UsedFromCapacity(capacity, available int64) int64 {
 	return used
 }
 
-// MBToBytes converts memory in MiB to bytes. Used for VM RAM reporting.
-func MBToBytes(mib int64) int64 {
-	return mib << 20
-}

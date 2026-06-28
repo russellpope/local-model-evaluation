@@ -39,7 +39,7 @@ func TestListDatastores_Simulator(t *testing.T) {
 			}
 
 			used := UsedFromCapacity(ds.CapacityB, ds.FreeB)
-			if used+ds.FreeB != ds.CapacityB && !(used == 0 && ds.FreeB > ds.CapacityB) {
+			if used+ds.FreeB != ds.CapacityB && ds.FreeB <= ds.CapacityB {
 				// within rounding: used + available should approximately equal capacity.
 				diff := used + ds.FreeB - ds.CapacityB
 				if diff < 0 {
