@@ -37,7 +37,7 @@ func ListDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, erro
 	if err != nil {
 		return nil, fmt.Errorf("creating datastore container view: %w", err)
 	}
-	defer vcv.Destroy(ctx)
+	defer func() { _ = vcv.Destroy(ctx) }()
 
 	dsRefs, err := vcv.Find(ctx, []string{"Datastore"}, property.Match{"name": "*"})
 	if err != nil {
@@ -134,7 +134,7 @@ func buildHostStorageCache(ctx context.Context, c *vim25.Client) map[string]*hos
 	if err != nil {
 		return nil
 	}
-	defer hcv.Destroy(ctx)
+	defer func() { _ = hcv.Destroy(ctx) }()
 
 	hostRefs, err := hcv.Find(ctx, []string{"HostSystem"}, property.Match{"name": "*"})
 	if err != nil {

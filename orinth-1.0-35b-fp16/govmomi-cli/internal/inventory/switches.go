@@ -134,7 +134,7 @@ func listDistributedSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo
 	if err != nil {
 		return nil, fmt.Errorf("creating DVS container view: %w", err)
 	}
-	defer cv.Destroy(ctx)
+	defer func() { _ = cv.Destroy(ctx) }()
 
 	dvsRefs, err := cv.Find(ctx, []string{"DistributedVirtualSwitch"}, property.Match{"name": "*"})
 	if err != nil {
@@ -346,7 +346,7 @@ func findHostsInInventory(ctx context.Context, c *vim25.Client) ([]types.Managed
 	if err != nil {
 		return nil, fmt.Errorf("creating host container view: %w", err)
 	}
-	defer hcv.Destroy(ctx)
+	defer func() { _ = hcv.Destroy(ctx) }()
 
 	hostRefs, err := hcv.Find(ctx, []string{"HostSystem"}, property.Match{"name": "*"})
 	if err != nil {

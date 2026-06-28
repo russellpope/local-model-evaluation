@@ -36,7 +36,7 @@ func ListVMs(ctx context.Context, c *vim25.Client) ([]VMInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating VM container view: %w", err)
 	}
-	defer vcv.Destroy(ctx)
+	defer func() { _ = vcv.Destroy(ctx) }()
 
 	vmRefs, err := vcv.Find(ctx, []string{"VirtualMachine"}, property.Match{"name": "*"})
 	if err != nil {
@@ -115,7 +115,7 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("creating VM container view: %w", err)
 	}
-	defer vcv.Destroy(ctx)
+	defer func() { _ = vcv.Destroy(ctx) }()
 
 	vmRefs, err := vcv.Find(ctx, []string{"VirtualMachine"}, property.Match{"name": "*"})
 	if err != nil {
@@ -276,7 +276,7 @@ func listDVSPortGroupNames(ctx context.Context, c *vim25.Client) (map[string]str
 	if err != nil {
 		return nil, fmt.Errorf("creating DVS container view: %w", err)
 	}
-	defer cv.Destroy(ctx)
+	defer func() { _ = cv.Destroy(ctx) }()
 
 	dvsRefs, err := cv.Find(ctx, []string{"DistributedVirtualSwitch"}, property.Match{"name": "*"})
 	if err != nil {
