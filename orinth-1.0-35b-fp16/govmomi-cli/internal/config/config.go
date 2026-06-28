@@ -39,8 +39,7 @@ func New(cfgPath string) (*viper.Viper, error) {
 		}
 		v.SetConfigFile(cfgPath)
 	} else {
-		home, _ := os.UserHomeDir()
-		if home != "" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			v.AddConfigPath(home)
 		}
 		v.AddConfigPath(".")
