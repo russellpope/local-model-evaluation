@@ -9,10 +9,9 @@ import (
 )
 
 func TestListDatastores_Simulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Datastore = 3 // three datastores per host; total >= 3.
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, func(m *simulator.Model) {
+		m.Datastore = 3
+	}, func(ctx context.Context, c *vim25.Client) error {
 		dsList, err := ListDatastores(ctx, c)
 		if err != nil {
 			t.Fatalf("ListDatastores: %v", err)
@@ -64,7 +63,4 @@ func TestListDatastores_Simulator(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }

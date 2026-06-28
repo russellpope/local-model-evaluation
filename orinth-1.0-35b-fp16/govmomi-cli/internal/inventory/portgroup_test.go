@@ -10,10 +10,9 @@ import (
 )
 
 func TestListVMsByPortGroup_Simulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 4 // at least a couple of VMs per RP.
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, func(m *simulator.Model) {
+		m.Machine = 4
+	}, func(ctx context.Context, c *vim25.Client) error {
 		switches, err := ListSwitches(ctx, c)
 		if err != nil {
 			t.Fatalf("ListSwitches: %v", err)
@@ -75,9 +74,6 @@ func TestListVMsByPortGroup_Simulator(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }
 
 // TestListVMsByPortGroup_DistributedPG_ExactSet verifies that ListVMsByPortGroup
@@ -87,10 +83,9 @@ func TestListVMsByPortGroup_Simulator(t *testing.T) {
 // names must be unique, and each returned VM's vCPU/RAM must match the
 // inventory record (N1 identity-consistency).
 func TestListVMsByPortGroup_DistributedPG_ExactSet(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 8
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, func(m *simulator.Model) {
+		m.Machine = 8
+	}, func(ctx context.Context, c *vim25.Client) error {
 		switches, err := ListSwitches(ctx, c)
 		if err != nil {
 			t.Fatalf("ListSwitches: %v", err)
@@ -180,9 +175,6 @@ func TestListVMsByPortGroup_DistributedPG_ExactSet(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }
 
 // TestListVMsByPortGroup_StandardPG_Empty verifies that a standard port group
@@ -190,9 +182,7 @@ func TestListVMsByPortGroup_DistributedPG_ExactSet(t *testing.T) {
 // the distributed port group, so standard PGs are always empty — this is
 // correct behavior and the test asserts it explicitly.
 func TestListVMsByPortGroup_StandardPG_Empty(t *testing.T) {
-	model := simulator.VPX()
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, nil, func(ctx context.Context, c *vim25.Client) error {
 		switches, err := ListSwitches(ctx, c)
 		if err != nil {
 			t.Fatalf("ListSwitches: %v", err)
@@ -221,7 +211,4 @@ func TestListVMsByPortGroup_StandardPG_Empty(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }

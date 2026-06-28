@@ -4,15 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/vmware/govmomi/simulator"
 	vim25 "github.com/vmware/govmomi/vim25"
 )
 
 func TestListVMs_Simulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 4 // VMs per resource pool; with default ClusterHost=3 that is at least 4 total.
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, nil, func(ctx context.Context, c *vim25.Client) error {
 		vms, err := ListVMs(ctx, c)
 		if err != nil {
 			t.Fatalf("ListVMs: %v", err)
@@ -46,7 +42,4 @@ func TestListVMs_Simulator(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }

@@ -5,14 +5,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/vmware/govmomi/simulator"
 	vim25 "github.com/vmware/govmomi/vim25"
 )
 
 func TestListSwitches_Simulator(t *testing.T) {
-	model := simulator.VPX()
-
-	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+	runWithSimulator(t, nil, func(ctx context.Context, c *vim25.Client) error {
 		switches, err := ListSwitches(ctx, c)
 		if err != nil {
 			t.Fatalf("ListSwitches: %v", err)
@@ -108,7 +105,4 @@ func TestListSwitches_Simulator(t *testing.T) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("simulator.Run: %v", err)
-	}
 }
