@@ -151,7 +151,7 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 
 	var stdNetRefs []types.ManagedObjectReference
 	nicMap := make(map[string][]nicBacking) // vm ref value -> its nic backings
-	for i := range vmRefs {
+	for i := range allDevices {
 		backings := parseNicBackings(&allDevices[i])
 		nicMap[allDevices[i].Self.Value] = backings
 		for _, b := range backings {
@@ -182,7 +182,7 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 	}
 
 	var matched []VMInfo
-	for i := range vmRefs {
+	for i := range allVms {
 		selfValue := allVms[i].Self.Value
 		info, ok := vmInfoByRef[selfValue]
 		if !ok {
@@ -304,8 +304,8 @@ func listDVSPortGroupNames(ctx context.Context, c *vim25.Client) (map[string]str
 			return nil, fmt.Errorf("batch retrieve DVS port groups: %w", err)
 		}
 		for i, pg := range pgs {
-			if pg.Name != "" && i < len(pgRefs) {
-				out[pgRefs[i].Value] = pg.Name
+			if pg.Name != "" && i < len(pgs) {
+				out[pgs[i].Self.Value] = pg.Name
 			}
 		}
 	}

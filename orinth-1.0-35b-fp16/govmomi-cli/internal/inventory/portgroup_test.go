@@ -80,15 +80,15 @@ func TestListVMsByPortGroup_Simulator(t *testing.T) {
 	}
 }
 
-// TestListVMsByPortGroup_StandardPG_ExactSet verifies that for a known standard
-// port group the VM set is correctly associated: every returned VM exists in
-// the inventory, names are unique, and the set is non-empty. This catches the
-// N1 regression where batch Retrieve results were keyed by input-ref index
-// rather than by each returned object's .Self.Value, causing VM identities to
-// bind to the wrong NICs/storage on real vCenter.
-func TestListVMsByPortGroup_StandardPG_ExactSet(t *testing.T) {
+// TestListVMsByPortGroup_DistributedPG_ExactSet verifies that ListVMsByPortGroup
+// returns the exact set of VMs connected to a distributed port group. The
+// expected set is derived at runtime from ListVMs so the test is immune to
+// model.Machine drift. Every returned VM must exist in the full inventory,
+// names must be unique, and each returned VM's vCPU/RAM must match the
+// inventory record (N1 identity-consistency).
+func TestListVMsByPortGroup_DistributedPG_ExactSet(t *testing.T) {
 	model := simulator.VPX()
-	model.Machine = 4
+	model.Machine = 8
 
 	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
 		switches, err := ListSwitches(ctx, c)
@@ -96,32 +96,118 @@ func TestListVMsByPortGroup_StandardPG_ExactSet(t *testing.T) {
 			t.Fatalf("ListSwitches: %v", err)
 		}
 
-		// Find a standard port group that actually has VMs connected.
+		// Find a distributed port group.
+		var dvPG string
+		for _, s := range switches {
+			if s.SwitchType == "distributed" && s.PortGroup != "" {
+				dvPG = s.PortGroup
+				break
+			}
+		}
+		if dvPG == "" {
+			t.Fatal("no distributed port group found in simulator")
+		}
+
+		// Build expected set from the full inventory.
 		allVMs, err := ListVMs(ctx, c)
 		if err != nil {
 			t.Fatalf("ListVMs: %v", err)
 		}
-		allNames := map[string]VMInfo{}
+		expectedByName := make(map[string]VMInfo, len(allVMs))
 		for _, v := range allVMs {
-			allNames[v.Name] = v
+			expectedByName[v.Name] = v
 		}
 
-		var stdPG string
-		for _, s := range switches {
-			if s.SwitchType != "standard" {
+		// Get actual set from ListVMsByPortGroup.
+		actual, err := ListVMsByPortGroup(ctx, c, dvPG)
+		if err != nil {
+			t.Fatalf("ListVMsByPortGroup(%q): %v", dvPG, err)
+		}
+
+		if len(actual) == 0 {
+			t.Fatalf("ListVMsByPortGroup(%q): expected non-empty set, got zero", dvPG)
+		}
+
+		// No extras: every actual VM must exist in the full inventory.
+		for _, v := range actual {
+			if _, ok := expectedByName[v.Name]; !ok {
+				t.Errorf("ListVMsByPortGroup(%q): returned VM %q not found in inventory", dvPG, v.Name)
+			}
+		}
+
+		// No missing: every VM in the inventory must appear in the result
+		// (VPX simulator attaches all VMs to the distributed PG).
+		for name := range expectedByName {
+			found := false
+			for _, v := range actual {
+				if v.Name == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("ListVMsByPortGroup(%q): VM %q in inventory but not returned", dvPG, name)
+			}
+		}
+
+		// No duplicates in actual results.
+		seen := map[string]bool{}
+		for _, v := range actual {
+			if v.Name == "" {
+				t.Errorf("ListVMsByPortGroup(%q): empty VM name in results", dvPG)
 				continue
 			}
-			matched, err := ListVMsByPortGroup(ctx, c, s.PortGroup)
-			if err != nil {
-				t.Fatalf("ListVMsByPortGroup(%q): %v", s.PortGroup, err)
+			if seen[v.Name] {
+				t.Errorf("ListVMsByPortGroup(%q): duplicate VM name %q", dvPG, v.Name)
 			}
-			if len(matched) > 0 {
+			seen[v.Name] = true
+		}
+
+		// N1 identity-consistency: each actual VM's vCPU and RAM must match
+		// the corresponding ListVMs record.
+		for _, v := range actual {
+			orig, ok := expectedByName[v.Name]
+			if !ok {
+				continue // already reported above
+			}
+			if v.VCPUs != orig.VCPUs {
+				t.Errorf("ListVMsByPortGroup(%q): VM %q vCPUs mismatch: got %d, expected %d", dvPG, v.Name, v.VCPUs, orig.VCPUs)
+			}
+			if v.MemoryMB != orig.MemoryMB {
+				t.Errorf("ListVMsByPortGroup(%q): VM %q MemoryMB mismatch: got %d, expected %d", dvPG, v.Name, v.MemoryMB, orig.MemoryMB)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("simulator.Run: %v", err)
+	}
+}
+
+// TestListVMsByPortGroup_StandardPG_Empty verifies that a standard port group
+// with no VMs returns zero results. On the VPX simulator, VMs attach only to
+// the distributed port group, so standard PGs are always empty — this is
+// correct behavior and the test asserts it explicitly.
+func TestListVMsByPortGroup_StandardPG_Empty(t *testing.T) {
+	model := simulator.VPX()
+
+	err := model.Run(func(ctx context.Context, c *vim25.Client) error {
+		switches, err := ListSwitches(ctx, c)
+		if err != nil {
+			t.Fatalf("ListSwitches: %v", err)
+		}
+
+		// Find any standard port group.
+		var stdPG string
+		for _, s := range switches {
+			if s.SwitchType == "standard" && s.PortGroup != "" {
 				stdPG = s.PortGroup
 				break
 			}
 		}
 		if stdPG == "" {
-			t.Skip("no standard port group with connected VMs in simulator; skipping exact-set test")
+			t.Fatal("no standard port group found in simulator")
 		}
 
 		matched, err := ListVMsByPortGroup(ctx, c, stdPG)
@@ -129,36 +215,8 @@ func TestListVMsByPortGroup_StandardPG_ExactSet(t *testing.T) {
 			t.Fatalf("ListVMsByPortGroup(%q): %v", stdPG, err)
 		}
 
-		if len(matched) == 0 {
-			t.Fatalf("ListVMsByPortGroup(%q): expected at least one VM connected to a standard port group, got zero", stdPG)
-		}
-
-		seen := map[string]bool{}
-		for _, v := range matched {
-			if v.Name == "" {
-				t.Errorf("ListVMsByPortGroup(%q): empty VM name in results", stdPG)
-			}
-			if seen[v.Name] {
-				t.Errorf("ListVMsByPortGroup(%q): duplicate VM name %q", stdPG, v.Name)
-			}
-			seen[v.Name] = true
-
-			// Each returned VM must exist in the full inventory — this catches
-			// the N1 bug where a VM's identity could be bound to another VM's
-			// NICs/storage due to incorrect result association.
-			orig, ok := allNames[v.Name]
-			if !ok {
-				t.Errorf("ListVMsByPortGroup(%q): returned VM %q not found in inventory", stdPG, v.Name)
-				continue
-			}
-			// And the identity must be self-consistent: vCPUs and memory from
-			// the matched record must match the inventory record for that name.
-			if v.VCPUs != orig.VCPUs {
-				t.Errorf("ListVMsByPortGroup(%q): VM %q vCPUs mismatch: got %d, expected %d", stdPG, v.Name, v.VCPUs, orig.VCPUs)
-			}
-			if v.MemoryMB != orig.MemoryMB {
-				t.Errorf("ListVMsByPortGroup(%q): VM %q MemoryMB mismatch: got %d, expected %d", stdPG, v.Name, v.MemoryMB, orig.MemoryMB)
-			}
+		if len(matched) != 0 {
+			t.Errorf("ListVMsByPortGroup(%q): expected 0 VMs, got %d", stdPG, len(matched))
 		}
 
 		return nil

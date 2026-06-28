@@ -64,12 +64,8 @@ func runSwitchesMode(ctx context.Context, cli *vim25.Client) error {
 		if host == "" {
 			host = "N/A"
 		}
-		used := s.UsedPorts
-		if !s.UsedPortsValid {
-			used = -1 // sentinel; rendered below
-		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			s.Switch, host, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, formatUsedPorts(used, s.UsedPortsValid))
+			s.Switch, host, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, formatUsedPorts(s.UsedPorts, s.UsedPortsValid))
 	}
 	return tw.Flush()
 }

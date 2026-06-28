@@ -188,11 +188,11 @@ paired with an unfalsifiable assertion, an unwired flag/config layer masked by a
 precedence test that bypasses it, and a port-group test that passes on an empty
 result and carries a dormant `t.Skip`.
 
-## Remediation experiment — orinth-1.0-35B (16 → 20 → 22, still FAIL)
+## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
-After the initial audit, orinth-1.0-35B was given a second task: read its own
-`REVIEW.md`, author a remediation prompt, and fix the findings in place — then
-repeat the loop against the re-score. Each remediated tree was re-audited from
+After the initial audit, orinth-1.0-35B was given a recurring task: read its own
+latest review, author a remediation prompt, and fix the findings in place — then
+repeat the loop against each re-score. Each remediated tree was re-audited from
 scratch as a fresh untrusted submission (same reproduce-everything pass + live
 simulator run, scored against the original findings, not the model's self-authored
 prompt).
@@ -202,15 +202,19 @@ prompt).
 | Original | **16 / 30** | ❌ FAIL (3 Crit) | as submitted | [`REVIEW.md`](orinth-1.0-35b-fp16/REVIEW.md) |
 | Round 1 | **20 / 30** | ❌ FAIL (1 Crit) | C3/H1/H2/H3/M2/M3/L1–L4 fixed; flags now *parse* but their values are silently dropped; DVS `USED` still fabricated; +1 latent ordering bug | [`REVIEW-remediated.md`](orinth-1.0-35b-fp16/REVIEW-remediated.md) |
 | Round 2 | **22 / 30** | ❌ FAIL (1 Crit) | **all four** survivors fixed — `--url` overrides env (live), DVS `USED`→`N/A`, VM↔NIC keyed by `.Self.Value`, HOST column added. One **new** firing `t.Skip` breaks criterion 8 | [`REVIEW-remediated-r2.md`](orinth-1.0-35b-fp16/REVIEW-remediated-r2.md) |
+| Round 3 | **25 / 30** | ⚠️ **PASS WITH CONCERNS** | `t.Skip` replaced by a genuine bidirectional exact-set test → **zero skips**; N1-residual loops + O(ds×hosts) HBA walk fixed; UPLINKS/sentinel cleaned. All 8 criteria met; a residual N+1 and a latent nil-deref remain | [`REVIEW-remediated-r3.md`](orinth-1.0-35b-fp16/REVIEW-remediated-r3.md) |
 
-The arc is the instructive part: a model can iteratively close real findings — two
-of the three original Criticals are genuinely fixed and live-verified by round 2 —
-yet keep tripping the spec's *testing* bar. Round 2's sole remaining blocker is a
-**transparent** `t.Skip` (an honest "the simulator can't model this scenario," not
-a disguised cheat) sitting exactly where the spec demanded a constructed
-assertion. The forbidden construct kept reappearing — dormant in the original,
-removed in round 1, re-introduced and now firing in round 2 — each round in a new
-place.
+The arc is the instructive part. For two rounds the model iteratively closed real
+findings — two of three original Criticals genuinely fixed and live-verified by
+round 2 — yet kept tripping the spec's *testing* bar: a **transparent** `t.Skip`
+(an honest "the simulator can't model this," not a disguised cheat) kept
+reappearing where the spec demanded a constructed assertion — dormant in the
+original, removed in round 1, re-introduced and firing in round 2. Round 3 finally
+cleared it: pointed *explicitly* at the flaw, the model wrote a genuine,
+falsifiable, bidirectional exact-set test (no skip) and fixed the four residuals
+with real understanding — crossing from FAIL to PASS WITH CONCERNS at 25/30. The
+gap, in the end, looked less like capability than self-detection: it could do the
+right thing once the wrong thing was named.
 
 ## Takeaways
 

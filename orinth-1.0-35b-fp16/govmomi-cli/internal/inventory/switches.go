@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
@@ -283,7 +284,23 @@ func formatUplinks(vs *types.HostVirtualSwitch) string {
 	if vs == nil || len(vs.Pnic) == 0 {
 		return "N/A"
 	}
-	return joinStrings(vs.Pnic, ",")
+	nics := make([]string, 0, len(vs.Pnic))
+	for _, p := range vs.Pnic {
+		nics = append(nics, stripPnicKey(p))
+	}
+	return joinStrings(nics, ",")
+}
+
+const pnicKeyPrefix = "key-vim.host.PhysicalNic-"
+
+// stripPnicKey removes the MO key prefix from a physical NIC reference,
+// yielding the bare device name (e.g. "vmnic0"). Pass-through when the
+// prefix is absent.
+func stripPnicKey(ref string) string {
+	if strings.HasPrefix(ref, pnicKeyPrefix) {
+		return ref[len(pnicKeyPrefix):]
+	}
+	return ref
 }
 
 // lacpStatusFromConfig inspects a DVS's config and reports whether LACP is
