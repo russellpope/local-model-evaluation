@@ -19,3 +19,8 @@ bin/
 
 # Vector DB / evaluation artifacts
 ruvector.db
+
+# Scratchpad notes & generated tooling artifacts (never committed)
+notes.txt
+graphify-out/
+.graphify_detect.json
