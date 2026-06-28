@@ -23,6 +23,7 @@ func TestListSwitches_Simulator(t *testing.T) {
 		}
 
 		hasStandard := false
+		hasDVS := false
 		for _, s := range switches {
 			if s.Switch == "" {
 				t.Error("ListSwitches: empty switch name")
@@ -36,6 +37,11 @@ func TestListSwitches_Simulator(t *testing.T) {
 
 			if s.PortGroup == "" {
 				t.Error("ListSwitches: empty port group name")
+			}
+
+			// Standard port groups must have a host associated (per-host inventory).
+			if s.SwitchType == "standard" && s.Host == "" {
+				t.Errorf("ListSwitches standard %q/%q: HOST is empty, expected ESXi host name", s.Switch, s.PortGroup)
 			}
 
 			// VLAN values should either be parseable as a single int or match known patterns.
@@ -78,11 +84,26 @@ func TestListSwitches_Simulator(t *testing.T) {
 					t.Errorf("ListSwitches standard %q/%q: USED (%d) must be < TOTAL (%d), got Used==Total",
 						s.Switch, s.PortGroup, s.UsedPorts, s.TotalPorts)
 				}
+				if !s.UsedPortsValid {
+					t.Errorf("ListSwitches standard %q/%q: UsedPortsValid must be true", s.Switch, s.PortGroup)
+				}
+			}
+
+			if s.SwitchType == "distributed" {
+				hasDVS = true
+				// DVS port groups cannot derive UsedPorts from the API — the column
+				// must be marked invalid so callers render N/A rather than Total-0.
+				if s.UsedPortsValid {
+					t.Errorf("ListSwitches distributed %q/%q: UsedPortsValid must be false (cannot derive used ports from API)", s.Switch, s.PortGroup)
+				}
 			}
 		}
 
 		if !hasStandard {
 			t.Error("ListSwitches: no standard switch port group found (C3 fix should surface them)")
+		}
+		if !hasDVS {
+			t.Error("ListSwitches: no distributed switch port group found")
 		}
 
 		return nil

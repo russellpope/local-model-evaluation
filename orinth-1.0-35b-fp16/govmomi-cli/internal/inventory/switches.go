@@ -18,6 +18,7 @@ import (
 type SwitchInfo struct {
 	Switch         string `json:"switch"`
 	SwitchType     string `json:"switch_type"` // "standard" | "distributed"
+	Host           string `json:"host"`        // ESXi host name (standard PGs only); empty for DVS
 	PortGroup      string `json:"port_group"`
 	VLAN           string `json:"vlan"`    // single ID, range, or empty
 	Uplinks        string `json:"uplinks"` // comma-separated physical NIC names (standard); N/A for DVS
@@ -25,6 +26,7 @@ type SwitchInfo struct {
 	TotalPorts     int32  `json:"total_ports"`
 	AvailablePorts int32  `json:"available_ports"`
 	UsedPorts      int32  `json:"used_ports"`
+	UsedPortsValid bool   `json:"used_ports_valid"` // false when USED cannot be derived (e.g. DVS)
 }
 
 // ListSwitches enumerates every standard vSwitch and distributed virtual switch
@@ -69,7 +71,7 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 
 	for _, ref := range hostRefs {
 		var hs mo.HostSystem
-		if err := pc.RetrieveOne(ctx, ref, []string{"config.network"}, &hs); err != nil {
+		if err := pc.RetrieveOne(ctx, ref, []string{"config.network", "name"}, &hs); err != nil {
 			return nil, fmt.Errorf("reading host %s network config: %w", ref.String(), err)
 		}
 
@@ -87,6 +89,7 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 		for _, pg := range netInfo.Portgroup {
 			si := SwitchInfo{
 				SwitchType: "standard",
+				Host:       hs.Name,
 				PortGroup:  pg.Spec.Name,
 				VLAN:       formatStandardVLAN(pg.Spec.VlanId),
 			}
@@ -105,6 +108,7 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 				si.Switch = "(floating)"
 				si.Uplinks = "N/A"
 			}
+			si.UsedPortsValid = true
 
 			out = append(out, si)
 		}
@@ -191,17 +195,14 @@ func listDistributedSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo
 			}
 
 			si := SwitchInfo{
-				Switch:     dvsName,
-				SwitchType: "distributed",
-				PortGroup:  pg.Name,
-				VLAN:       formatDVSvVLAN(pg.Config.DefaultPortConfig),
-				Uplinks:    "N/A", // uplinks are a DVS-level concept, not per-portgroup in vSphere API
-				LACP:       lacpStatus,
-				TotalPorts: pg.Config.NumPorts,
-			}
-			si.UsedPorts = si.TotalPorts - si.AvailablePorts
-			if si.UsedPorts < 0 {
-				si.UsedPorts = 0
+				Switch:         dvsName,
+				SwitchType:     "distributed",
+				PortGroup:      pg.Name,
+				VLAN:           formatDVSvVLAN(pg.Config.DefaultPortConfig),
+				Uplinks:        "N/A", // uplinks are a DVS-level concept, not per-portgroup in vSphere API
+				LACP:           lacpStatus,
+				TotalPorts:     pg.Config.NumPorts,
+				UsedPortsValid: false, // AvailablePorts is not exposed by the DVS portgroup API; never render Total-0 as if computed.
 			}
 
 			out = append(out, si)

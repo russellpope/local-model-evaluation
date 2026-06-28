@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"text/tabwriter"
 
 	vim25 "github.com/vmware/govmomi/vim25"
@@ -57,10 +58,18 @@ func runSwitchesMode(ctx context.Context, cli *vim25.Client) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tTOTAL PORTS\tUSED")
+	fmt.Fprintln(tw, "SWITCH\tHOST\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tTOTAL PORTS\tUSED")
 	for _, s := range switches {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-			s.Switch, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, s.UsedPorts)
+		host := s.Host
+		if host == "" {
+			host = "N/A"
+		}
+		used := s.UsedPorts
+		if !s.UsedPortsValid {
+			used = -1 // sentinel; rendered below
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
+			s.Switch, host, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, formatUsedPorts(used, s.UsedPortsValid))
 	}
 	return tw.Flush()
 }
@@ -79,4 +88,14 @@ func runPortgroupMode(ctx context.Context, cli *vim25.Client, pg string) error {
 			v.Name, v.VCPUs, float64(v.MemoryMB)/1024.0, inventory.FormatBytes(v.StorageB))
 	}
 	return tw.Flush()
+}
+
+// formatUsedPorts renders the USED column value. When the underlying data is
+// not derivable (e.g. DVS port groups where AvailablePorts is not exposed by
+// the API), renders "N/A" rather than a misleading numeric value.
+func formatUsedPorts(used int32, valid bool) string {
+	if !valid {
+		return "N/A"
+	}
+	return strconv.Itoa(int(used))
 }

@@ -70,12 +70,17 @@ func initViper(cfgPath string, cmd *cobra.Command) error {
 // bindFlags binds every shared flag on the root command to viper so that
 // viper.Get(key) returns the highest-precedence value. Flags are registered in
 // package-level init() so they exist at cobra parse time (before PersistentPreRunE).
+//
+// We look up flags on cmd.Flags() (the merged set that includes inherited
+// persistent flags) rather than cmd.PersistentFlags() — a subcommand's own
+// PersistentFlags() is empty, so binding from there would silently no-op and
+// leave env/config/default values un-overridden by CLI flags.
 func bindFlags(v *viper.Viper, cmd *cobra.Command) {
-	_ = v.BindPFlag("url", cmd.PersistentFlags().Lookup("url"))
-	_ = v.BindPFlag("username", cmd.PersistentFlags().Lookup("username"))
-	_ = v.BindPFlag("password", cmd.PersistentFlags().Lookup("password"))
-	_ = v.BindPFlag("insecure", cmd.PersistentFlags().Lookup("insecure"))
-	_ = v.BindPFlag("timeout", cmd.PersistentFlags().Lookup("timeout"))
+	_ = v.BindPFlag("url", cmd.Flags().Lookup("url"))
+	_ = v.BindPFlag("username", cmd.Flags().Lookup("username"))
+	_ = v.BindPFlag("password", cmd.Flags().Lookup("password"))
+	_ = v.BindPFlag("insecure", cmd.Flags().Lookup("insecure"))
+	_ = v.BindPFlag("timeout", cmd.Flags().Lookup("timeout"))
 }
 
 // getConfig extracts the typed config from the shared viper instance. Called

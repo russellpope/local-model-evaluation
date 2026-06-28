@@ -55,7 +55,7 @@ func ListDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, erro
 
 	var infos []DatastoreInfo
 	for i := range dss {
-		info, err := dsInfoFromMo(&dss[i], c)
+		info, err := dsInfoFromMo(ctx, &dss[i], c)
 		if err != nil {
 			continue // skip unreadable datastores; do not fail the whole query
 		}
@@ -71,7 +71,7 @@ func ListDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, erro
 
 // dsInfoFromMo extracts a DatastoreInfo from a populated mo.Datastore. The
 // transport classification may query HBA info on hosts that mount the datastore.
-func dsInfoFromMo(ds *mo.Datastore, c *vim25.Client) (DatastoreInfo, error) {
+func dsInfoFromMo(ctx context.Context, ds *mo.Datastore, c *vim25.Client) (DatastoreInfo, error) {
 	if ds == nil {
 		return DatastoreInfo{}, fmt.Errorf("nil datastore")
 	}
@@ -80,7 +80,7 @@ func dsInfoFromMo(ds *mo.Datastore, c *vim25.Client) (DatastoreInfo, error) {
 	desc := TransportDescriptor{FilesystemType: summary.Type}
 
 	if !isNFSType(summary.Type) {
-		hbas, hErr := hostHBAsForDatastore(context.TODO(), c, types.ManagedObjectReference{Value: summary.Datastore.Value})
+		hbas, hErr := hostHBAsForDatastore(ctx, c, types.ManagedObjectReference{Value: summary.Datastore.Value})
 		if hErr == nil && len(hbas) > 0 {
 			desc.HBAInfo = hbas
 		}

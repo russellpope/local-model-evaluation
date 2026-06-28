@@ -138,7 +138,7 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 		if err != nil {
 			continue
 		}
-		vmInfoByRef[vmRefs[i].Value] = info
+		vmInfoByRef[allVms[i].Self.Value] = info
 	}
 
 	// Step 2 — batch-fetch config.hardware.device for every VM.
@@ -151,9 +151,9 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 
 	var stdNetRefs []types.ManagedObjectReference
 	nicMap := make(map[string][]nicBacking) // vm ref value -> its nic backings
-	for i, ref := range vmRefs {
+	for i := range vmRefs {
 		backings := parseNicBackings(&allDevices[i])
-		nicMap[ref.Value] = backings
+		nicMap[allDevices[i].Self.Value] = backings
 		for _, b := range backings {
 			if b.networkRef != nil {
 				stdNetRefs = append(stdNetRefs, *b.networkRef)
@@ -170,7 +170,7 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 		}
 		for i, n := range nets {
 			if n.Name != "" && i < len(stdNetRefs) {
-				netNameByValue[stdNetRefs[i].Value] = n.Name
+				netNameByValue[nets[i].Self.Value] = n.Name
 			}
 		}
 	}
@@ -182,12 +182,13 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 	}
 
 	var matched []VMInfo
-	for _, ref := range vmRefs {
-		info, ok := vmInfoByRef[ref.Value]
+	for i := range vmRefs {
+		selfValue := allVms[i].Self.Value
+		info, ok := vmInfoByRef[selfValue]
 		if !ok {
 			continue
 		}
-		if matchAgainstPG(nicMap[ref.Value], stdNetRefs, netNameByValue, dvsPgMap, pgName) {
+		if matchAgainstPG(nicMap[selfValue], stdNetRefs, netNameByValue, dvsPgMap, pgName) {
 			matched = append(matched, info)
 		}
 	}
