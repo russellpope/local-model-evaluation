@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	"govmomi-cli/internal/config"
@@ -76,11 +77,22 @@ func initViper(cfgPath string, cmd *cobra.Command) error {
 // PersistentFlags() is empty, so binding from there would silently no-op and
 // leave env/config/default values un-overridden by CLI flags.
 func bindFlags(v *viper.Viper, cmd *cobra.Command) {
-	_ = v.BindPFlag("url", cmd.Flags().Lookup("url"))
-	_ = v.BindPFlag("username", cmd.Flags().Lookup("username"))
-	_ = v.BindPFlag("password", cmd.Flags().Lookup("password"))
-	_ = v.BindPFlag("insecure", cmd.Flags().Lookup("insecure"))
-	_ = v.BindPFlag("timeout", cmd.Flags().Lookup("timeout"))
+	for _, name := range []string{"url", "username", "password", "insecure", "timeout"} {
+		f := cmd.Flags().Lookup(name)
+		if f == nil {
+			// Flag not registered on this command. This is expected for
+			// subcommands that don't inherit persistent flags via the old
+			// cmd.PersistentFlags() lookup. The flag will still be resolved
+			// from env/config/default via viper's own precedence rules, but
+			// CLI flag override won't work for this subcommand.
+			continue
+		}
+		if err := v.BindPFlag(name, f); err != nil {
+			// BindPFlag errors are rare (e.g. duplicate name) but worth
+			// knowing about — they indicate a configuration bug.
+			fmt.Fprintf(os.Stderr, "warning: failed to bind flag %q: %v\n", name, err)
+		}
+	}
 }
 
 // getConfig extracts the typed config from the shared viper instance. Called
