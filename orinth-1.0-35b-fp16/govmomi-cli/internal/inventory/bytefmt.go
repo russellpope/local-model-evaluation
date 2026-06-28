@@ -33,4 +33,3 @@ func UsedFromCapacity(capacity, available int64) int64 {
 	}
 	return used
 }
-

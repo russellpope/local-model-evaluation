@@ -70,11 +70,15 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 	pc := property.DefaultCollector(c)
 	var out []SwitchInfo
 
-	for _, ref := range hostRefs {
-		var hs mo.HostSystem
-		if err := pc.RetrieveOne(ctx, ref, []string{"config.network", "name"}, &hs); err != nil {
-			return nil, fmt.Errorf("reading host %s network config: %w", ref.String(), err)
+	var hosts []mo.HostSystem
+	if len(hostRefs) > 0 {
+		if err := pc.Retrieve(ctx, hostRefs, []string{"config.network", "name"}, &hosts); err != nil {
+			return nil, fmt.Errorf("batch retrieve host network config: %w", err)
 		}
+	}
+
+	for i := range hosts {
+		hs := &hosts[i]
 
 		netInfo := hs.Config.Network
 		if netInfo == nil {

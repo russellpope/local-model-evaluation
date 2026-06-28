@@ -59,7 +59,7 @@ func ListDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, erro
 
 	var infos []DatastoreInfo
 	for i := range dss {
-		info, err := dsInfoFromMo(ctx, &dss[i], c, hostCache)
+		info, err := dsInfoFromMo(&dss[i], hostCache)
 		if err != nil {
 			continue // skip unreadable datastores; do not fail the whole query
 		}
@@ -77,7 +77,7 @@ func ListDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, erro
 // transport classification may query HBA info on hosts that mount the datastore.
 // hostCache is a pre-fetched map of host ref -> storage info, built once by
 // ListDatastores to avoid O(ds x hosts) re-walks.
-func dsInfoFromMo(ctx context.Context, ds *mo.Datastore, c *vim25.Client, hostCache map[string]*hostStorageInfo) (DatastoreInfo, error) {
+func dsInfoFromMo(ds *mo.Datastore, hostCache map[string]*hostStorageInfo) (DatastoreInfo, error) {
 	if ds == nil {
 		return DatastoreInfo{}, fmt.Errorf("nil datastore")
 	}
@@ -86,7 +86,7 @@ func dsInfoFromMo(ctx context.Context, ds *mo.Datastore, c *vim25.Client, hostCa
 	desc := TransportDescriptor{FilesystemType: summary.Type}
 
 	if !isNFSType(summary.Type) {
-		hbas, hErr := hostHBAsForDatastore(ctx, c, types.ManagedObjectReference{Value: summary.Datastore.Value}, hostCache)
+		hbas, hErr := hostHBAsForDatastore(types.ManagedObjectReference{Value: summary.Datastore.Value}, hostCache)
 		if hErr == nil && len(hbas) > 0 {
 			desc.HBAInfo = hbas
 		}
@@ -157,9 +157,13 @@ func buildHostStorageCache(ctx context.Context, c *vim25.Client) map[string]*hos
 		for _, d := range hs.Datastore {
 			dsVals[d.Value] = true
 		}
+		var sd *types.HostStorageDeviceInfo
+		if hs.Config != nil {
+			sd = hs.Config.StorageDevice
+		}
 		cache[hs.Self.Value] = &hostStorageInfo{
 			datastoreValues: dsVals,
-			sd:              hs.Config.StorageDevice,
+			sd:              sd,
 		}
 	}
 
@@ -170,7 +174,7 @@ func buildHostStorageCache(ctx context.Context, c *vim25.Client) map[string]*hos
 // host that has the datastore mounted, then returns any SCSI or NVMe HBAs
 // reachable on those hosts. LUNs are mapped back to HBAs via scsiTopology so
 // only adapters with actual paths to the target datastore's LUNs are reported.
-func hostHBAsForDatastore(ctx context.Context, c *vim25.Client, dsRef types.ManagedObjectReference, hostCache map[string]*hostStorageInfo) ([]HBAInfo, error) {
+func hostHBAsForDatastore(dsRef types.ManagedObjectReference, hostCache map[string]*hostStorageInfo) ([]HBAInfo, error) {
 	var out []HBAInfo
 
 	if hostCache == nil {

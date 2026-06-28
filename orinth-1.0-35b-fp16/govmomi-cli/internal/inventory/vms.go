@@ -303,9 +303,9 @@ func listDVSPortGroupNames(ctx context.Context, c *vim25.Client) (map[string]str
 		if err := pc.Retrieve(ctx, pgRefs, []string{"name"}, &pgs); err != nil {
 			return nil, fmt.Errorf("batch retrieve DVS port groups: %w", err)
 		}
-		for i, pg := range pgs {
-			if pg.Name != "" && i < len(pgs) {
-				out[pgs[i].Self.Value] = pg.Name
+		for _, pg := range pgs {
+			if pg.Name != "" {
+				out[pg.Self.Value] = pg.Name
 			}
 		}
 	}
