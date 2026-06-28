@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -20,14 +21,17 @@ var datastoresCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := cmd.Context()
+		rootCtx := cmd.Context()
+		ctx, cancel := context.WithTimeout(rootCtx, cfg.Timeout)
+		defer cancel()
+
 		cli, sm, err := newClient(ctx, cfg)
 		if err != nil {
 			return err
 		}
 		defer closeClient(ctx, cli, sm)
 
-		dsList, err := inventory.ListDatastores(cmd.Context(), cli)
+		dsList, err := inventory.ListDatastores(ctx, cli)
 		if err != nil {
 			return fmt.Errorf("listing datastores: %w", err)
 		}

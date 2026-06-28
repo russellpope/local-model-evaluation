@@ -6,8 +6,8 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"govmomi-cli/internal/inventory"
 	vim25 "github.com/vmware/govmomi/vim25"
+	"govmomi-cli/internal/inventory"
 
 	"github.com/spf13/cobra"
 )
@@ -27,7 +27,10 @@ With --portgroup <name>, list VMs connected to that named port group instead.`,
 			return err
 		}
 
-		ctx := cmd.Context()
+		rootCtx := cmd.Context()
+		ctx, cancel := context.WithTimeout(rootCtx, cfg.Timeout)
+		defer cancel()
+
 		cli, sm, err := newClient(ctx, cfg)
 		if err != nil {
 			return err
@@ -35,10 +38,10 @@ With --portgroup <name>, list VMs connected to that named port group instead.`,
 		defer closeClient(ctx, cli, sm)
 
 		if pgName != "" {
-			return runPortgroupMode(cmd.Context(), cli, pgName)
+			return runPortgroupMode(ctx, cli, pgName)
 		}
 
-		return runSwitchesMode(cmd.Context(), cli)
+		return runSwitchesMode(ctx, cli)
 	},
 }
 
@@ -56,12 +59,8 @@ func runSwitchesMode(ctx context.Context, cli *vim25.Client) error {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tTOTAL PORTS\tUSED")
 	for _, s := range switches {
-		used := s.TotalPorts - s.UsedPorts
-		if used < 0 {
-			used = 0
-		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-			s.Switch, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, used)
+			s.Switch, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, s.UsedPorts)
 	}
 	return tw.Flush()
 }
@@ -74,7 +73,7 @@ func runPortgroupMode(ctx context.Context, cli *vim25.Client, pg string) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tVCPU\tRAM (GB)\tSTORAGE")
+	fmt.Fprintln(tw, "NAME\tVCPU\tRAM (GiB)\tSTORAGE")
 	for _, v := range vms {
 		fmt.Fprintf(tw, "%s\t%d\t%.1f GiB\t%s\n",
 			v.Name, v.VCPUs, float64(v.MemoryMB)/1024.0, inventory.FormatBytes(v.StorageB))

@@ -10,7 +10,7 @@ import (
 
 // Config holds the resolved connection parameters for a vCenter session.
 type Config struct {
-	URL      string        // e.g. https://vc.lab/sdk
+	URL      string // e.g. https://vc.lab/sdk
 	Username string
 	Password string
 	Insecure bool          // skip TLS verification

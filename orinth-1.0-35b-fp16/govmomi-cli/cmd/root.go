@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	cfgFile string  // --config flag: optional YAML config file path
+	cfgFile   string // --config flag: optional YAML config file path
 	viperInst *viper.Viper
 )
 
@@ -39,6 +39,14 @@ virtualization inventory across three views:
 }
 
 func init() {
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to YAML config file (optional)")
+
+	rootCmd.PersistentFlags().String("url", "", "vCenter URL or host (e.g. https://vc.lab/sdk)")
+	rootCmd.PersistentFlags().String("username", "", "vCenter username")
+	rootCmd.PersistentFlags().String("password", "", "vCenter password")
+	rootCmd.PersistentFlags().Bool("insecure", false, "skip TLS certificate verification")
+	rootCmd.PersistentFlags().Duration("timeout", 60*time.Second, "overall operation timeout")
+
 	rootCmd.AddCommand(vmsCmd)
 	rootCmd.AddCommand(datastoresCmd)
 	rootCmd.AddCommand(vswitchesCmd)
@@ -59,24 +67,14 @@ func initViper(cfgPath string, cmd *cobra.Command) error {
 	return nil
 }
 
-// bindFlags registers every shared flag on the root command and binds it to
-// viper so that viper.Get(key) returns the highest-precedence value.
+// bindFlags binds every shared flag on the root command to viper so that
+// viper.Get(key) returns the highest-precedence value. Flags are registered in
+// package-level init() so they exist at cobra parse time (before PersistentPreRunE).
 func bindFlags(v *viper.Viper, cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to YAML config file (optional)")
-
-	cmd.PersistentFlags().String("url", "", "vCenter URL or host (e.g. https://vc.lab/sdk)")
 	_ = v.BindPFlag("url", cmd.PersistentFlags().Lookup("url"))
-
-	cmd.PersistentFlags().String("username", "", "vCenter username")
 	_ = v.BindPFlag("username", cmd.PersistentFlags().Lookup("username"))
-
-	cmd.PersistentFlags().String("password", "", "vCenter password")
 	_ = v.BindPFlag("password", cmd.PersistentFlags().Lookup("password"))
-
-	cmd.PersistentFlags().Bool("insecure", false, "skip TLS certificate verification")
 	_ = v.BindPFlag("insecure", cmd.PersistentFlags().Lookup("insecure"))
-
-	cmd.PersistentFlags().Duration("timeout", 60*time.Second, "overall operation timeout")
 	_ = v.BindPFlag("timeout", cmd.PersistentFlags().Lookup("timeout"))
 }
 
@@ -89,27 +87,25 @@ func getConfig() (config.Config, error) {
 	return config.ToStruct(viperInst), nil
 }
 
-// newClient builds an authenticated *vim25.Client from the resolved config. It
-// respects the configured timeout via context.WithTimeout and defers a logout on
-// successful authentication so callers can simply call `defer closeClient(ctx, client)`.
+// newClient builds an authenticated *vim25.Client from the resolved config. The
+// caller is responsible for supplying a context with the appropriate timeout
+// (see each subcommand's RunE). A successful client is paired with a session
+// manager; callers should call `defer closeClient(ctx, client, sm)` when done.
 func newClient(ctx context.Context, cfg config.Config) (*vim25.Client, *session.Manager, error) {
 	u, err := url.Parse(cfg.URL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing vCenter URL %q: %w", cfg.URL, err)
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
 	sc := soap.NewClient(u, cfg.Insecure)
-	cli, err := vim25.NewClient(timeoutCtx, sc)
+	cli, err := vim25.NewClient(ctx, sc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connecting to vCenter at %s: %w", u.Host, err)
 	}
 
 	sm := session.NewManager(cli)
 	auth := url.UserPassword(cfg.Username, cfg.Password)
-	if err := sm.Login(timeoutCtx, auth); err != nil {
+	if err := sm.Login(ctx, auth); err != nil {
 		return cli, sm, fmt.Errorf("authenticating as user %q against vCenter: %w", cfg.Username, err)
 	}
 

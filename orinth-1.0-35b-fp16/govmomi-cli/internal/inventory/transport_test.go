@@ -22,7 +22,7 @@ func TestClassifyTransport(t *testing.T) {
 			name: "vmfs_with_fc_hba",
 			desc: TransportDescriptor{
 				FilesystemType: "VMFS",
-				HBAInfo: []HBAInfo{{Key: "vmhba0", Type: "FibreChannel"}},
+				HBAInfo:        []HBAInfo{{Key: "vmhba0", Type: "FibreChannel"}},
 			},
 			want: "FC",
 		},
@@ -30,7 +30,7 @@ func TestClassifyTransport(t *testing.T) {
 			name: "vmfs_with_iscsi_hba",
 			desc: TransportDescriptor{
 				FilesystemType: "VMFS",
-				HBAInfo: []HBAInfo{{Key: "vmhba1", Type: "iSCSI"}},
+				HBAInfo:        []HBAInfo{{Key: "vmhba1", Type: "iSCSI"}},
 			},
 			want: "iSCSI",
 		},
@@ -38,7 +38,7 @@ func TestClassifyTransport(t *testing.T) {
 			name: "vmfs_with_nvme_hba",
 			desc: TransportDescriptor{
 				FilesystemType: "VMFS",
-				HBAInfo: []HBAInfo{{Key: "vmhba2", Type: "NVMe"}},
+				HBAInfo:        []HBAInfo{{Key: "vmhba2", Type: "NVMe"}},
 			},
 			want: "NVMe",
 		},
@@ -54,9 +54,9 @@ func TestClassifyTransport(t *testing.T) {
 			want: "FC", // FC takes priority in our classifier
 		},
 		{
-			name:     "empty_filesystem_no_hbas",
-			desc:     TransportDescriptor{},
-			want:     "unknown",
+			name: "empty_filesystem_no_hbas",
+			desc: TransportDescriptor{},
+			want: "unknown",
 		},
 		{
 			name: "vmfs_no_hba_info",

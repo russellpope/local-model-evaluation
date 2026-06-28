@@ -8,22 +8,23 @@ import (
 
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
+	"github.com/vmware/govmomi/vim25"
 	mo "github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"github.com/vmware/govmomi/vim25"
 )
 
 // SwitchInfo is the inventory record returned by ListSwitches. Each row
 // corresponds to one port group on one switch (standard or distributed).
 type SwitchInfo struct {
-	Switch     string `json:"switch"`
-	SwitchType string `json:"switch_type"` // "standard" | "distributed"
-	PortGroup  string `json:"port_group"`
-	VLAN       string `json:"vlan"`         // single ID, range, or empty
-	Uplinks    string `json:"uplinks"`      // comma-separated physical NIC names (standard); N/A for DVS
-	LACP       string `json:"lacp"`         // "enabled" | "disabled" | "N/A"
-	TotalPorts int32  `json:"total_ports"`
-	UsedPorts  int32  `json:"used_ports"`
+	Switch         string `json:"switch"`
+	SwitchType     string `json:"switch_type"` // "standard" | "distributed"
+	PortGroup      string `json:"port_group"`
+	VLAN           string `json:"vlan"`    // single ID, range, or empty
+	Uplinks        string `json:"uplinks"` // comma-separated physical NIC names (standard); N/A for DVS
+	LACP           string `json:"lacp"`    // "enabled" | "disabled" | "N/A"
+	TotalPorts     int32  `json:"total_ports"`
+	AvailablePorts int32  `json:"available_ports"`
+	UsedPorts      int32  `json:"used_ports"`
 }
 
 // ListSwitches enumerates every standard vSwitch and distributed virtual switch
@@ -56,7 +57,7 @@ func ListSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {
 }
 
 // listStandardSwitches walks every host in the inventory and reads its
-// HostNetworkSystem config to extract standard vSwitches and their port groups.
+// HostSystem.Config.Network to extract standard vSwitches and their port groups.
 func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {
 	hostRefs, err := findHostsInInventory(ctx, c)
 	if err != nil {
@@ -67,22 +68,23 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 	var out []SwitchInfo
 
 	for _, ref := range hostRefs {
-		var netsys mo.HostNetworkSystem
-		if err := pc.RetrieveOne(ctx, ref, []string{"networkInfo"}, &netsys); err != nil {
-			continue // skip hosts we cannot read; do not fail the whole query
+		var hs mo.HostSystem
+		if err := pc.RetrieveOne(ctx, ref, []string{"config.network"}, &hs); err != nil {
+			return nil, fmt.Errorf("reading host %s network config: %w", ref.String(), err)
 		}
 
-		if netsys.NetworkInfo == nil {
+		netInfo := hs.Config.Network
+		if netInfo == nil {
 			continue
 		}
 
 		vsMap := make(map[string]*types.HostVirtualSwitch)
-		for i := range netsys.NetworkInfo.Vswitch {
-			vs := &netsys.NetworkInfo.Vswitch[i]
+		for i := range netInfo.Vswitch {
+			vs := &netInfo.Vswitch[i]
 			vsMap[vs.Name] = vs
 		}
 
-		for _, pg := range netsys.NetworkInfo.Portgroup {
+		for _, pg := range netInfo.Portgroup {
 			si := SwitchInfo{
 				SwitchType: "standard",
 				PortGroup:  pg.Spec.Name,
@@ -92,6 +94,11 @@ func listStandardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 			if vs, ok := vsMap[pg.Spec.VswitchName]; ok {
 				si.Switch = vs.Name
 				si.TotalPorts = vs.NumPorts
+				si.AvailablePorts = vs.NumPortsAvailable
+				si.UsedPorts = si.TotalPorts - si.AvailablePorts
+				if si.UsedPorts < 0 {
+					si.UsedPorts = 0
+				}
 				si.Uplinks = formatUplinks(vs)
 				si.LACP = "N/A"
 			} else {
@@ -130,30 +137,56 @@ func listDistributedSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo
 	}
 
 	pc := property.DefaultCollector(c)
+
+	var dvss []mo.DistributedVirtualSwitch
+	if len(dvsRefs) > 0 {
+		if err := pc.Retrieve(ctx, dvsRefs, []string{"name", "summary", "config", "portgroup"}, &dvss); err != nil {
+			return nil, fmt.Errorf("batch retrieve DVS objects: %w", err)
+		}
+	}
+
+	dvsByName := make(map[string]*mo.DistributedVirtualSwitch, len(dvss))
+	for i := range dvss {
+		if dvss[i].Name != "" {
+			dvsByName[dvss[i].Name] = &dvss[i]
+		}
+	}
+
+	pgRefs := collectAllDVSportgroupRefs(dvss)
+	type pgEntry struct {
+		ref types.ManagedObjectReference
+		obj mo.DistributedVirtualPortgroup
+	}
+	var allPgs []pgEntry
+	if len(pgRefs) > 0 {
+		var pgs []mo.DistributedVirtualPortgroup
+		if err := pc.Retrieve(ctx, pgRefs, []string{"name", "config"}, &pgs); err != nil {
+			return nil, fmt.Errorf("batch retrieve DVS port groups: %w", err)
+		}
+		for i := range pgs {
+			allPgs = append(allPgs, pgEntry{ref: pgRefs[i], obj: pgs[i]})
+		}
+	}
+
+	pgByRefValue := make(map[string]*mo.DistributedVirtualPortgroup, len(allPgs))
+	for i := range allPgs {
+		if allPgs[i].obj.Name != "" {
+			pgByRefValue[allPgs[i].ref.Value] = &allPgs[i].obj
+		}
+	}
+
 	var out []SwitchInfo
-
-	for _, ref := range dvsRefs {
-		var dvs mo.DistributedVirtualSwitch
-		if err := pc.RetrieveOne(ctx, ref, []string{"name", "summary", "config", "portgroup"}, &dvs); err != nil {
-			continue // skip unreadable DVS; do not fail the whole query
-		}
-
+	for _, dvs := range dvss {
 		dvsName := dvs.Name
-		totalPorts := int32(0)
-		if cfg := dvs.Config; cfg != nil {
-			if info := cfg.GetDVSConfigInfo(); info != nil {
-				totalPorts = info.NumPorts
-			}
-		}
-		if dvs.Summary.NumPorts > totalPorts {
-			totalPorts = dvs.Summary.NumPorts
+		if dvsName == "" {
+			continue
 		}
 
 		lacpStatus := lacpStatusFromConfig(dvs.Config)
 
 		for _, pgRef := range dvs.Portgroup {
-			var pg mo.DistributedVirtualPortgroup
-			if err := pc.RetrieveOne(ctx, pgRef, []string{"name", "config"}, &pg); err != nil {
+			pg, ok := pgByRefValue[pgRef.Value]
+			if !ok {
 				continue // skip unreadable port group
 			}
 
@@ -166,12 +199,26 @@ func listDistributedSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo
 				LACP:       lacpStatus,
 				TotalPorts: pg.Config.NumPorts,
 			}
+			si.UsedPorts = si.TotalPorts - si.AvailablePorts
+			if si.UsedPorts < 0 {
+				si.UsedPorts = 0
+			}
 
 			out = append(out, si)
 		}
 	}
 
 	return out, nil
+}
+
+// collectAllDVSportgroupRefs flattens every port group reference across a slice
+// of DistributedVirtualSwitches into a single ref slice suitable for batch Retrieve.
+func collectAllDVSportgroupRefs(dvss []mo.DistributedVirtualSwitch) []types.ManagedObjectReference {
+	var out []types.ManagedObjectReference
+	for _, dvs := range dvss {
+		out = append(out, dvs.Portgroup...)
+	}
+	return out
 }
 
 // formatStandardVLAN renders the VLAN ID for a standard port group. A value of

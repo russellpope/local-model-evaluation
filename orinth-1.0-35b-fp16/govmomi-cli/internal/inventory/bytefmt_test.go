@@ -12,7 +12,7 @@ func TestFormatBytes(t *testing.T) {
 		{"one_byte", 1, "0.0 GiB"},
 		{"small_gib", 500 * 1024 * 1024, "0.5 GiB"},
 		{"exact_gib", 1 << 30, "1.0 GiB"},
-		{"two_point_five_gib", int64(2.5*float64(1<<30)), "2.5 GiB"},
+		{"two_point_five_gib", int64(2.5 * float64(1<<30)), "2.5 GiB"},
 		{"one_tib", 1 << 40, "1.0 TiB"},
 		{"above_tib", 1<<40 + 500*1024*1024*1024, "1.5 TiB"},
 	}

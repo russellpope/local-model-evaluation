@@ -7,9 +7,9 @@ import (
 
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
+	"github.com/vmware/govmomi/vim25"
 	mo "github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"github.com/vmware/govmomi/vim25"
 )
 
 // VMInfo is the inventory record returned by ListVMs. All byte values are in
@@ -45,12 +45,18 @@ func ListVMs(ctx context.Context, c *vim25.Client) ([]VMInfo, error) {
 
 	pc := property.DefaultCollector(c)
 
-	var infos []VMInfo
+	var vms []mo.VirtualMachine
+	if len(vmRefs) > 0 {
+		if err := pc.Retrieve(ctx, vmRefs, []string{"summary"}, &vms); err != nil {
+			return nil, fmt.Errorf("batch retrieve VM summaries: %w", err)
+		}
+	}
 
-	for _, ref := range vmRefs {
-		info, err := fetchVMSummary(ctx, pc, ref)
+	var infos []VMInfo
+	for i := range vms {
+		info, err := sumFromMo(&vms[i])
 		if err != nil {
-			return nil, fmt.Errorf("fetching summary for VM %s: %w", ref.String(), err)
+			continue // skip unreadable VMs; do not fail the whole query
 		}
 		infos = append(infos, info)
 	}
@@ -62,13 +68,12 @@ func ListVMs(ctx context.Context, c *vim25.Client) ([]VMInfo, error) {
 	return infos, nil
 }
 
-// fetchVMSummary pulls Summary from a single VM via one property call. The
-// summary already contains Name, NumCpu, MemorySizeMB and Storage.Committed so
-// we do not need to retrieve the full Config.
-func fetchVMSummary(ctx context.Context, pc *property.Collector, ref types.ManagedObjectReference) (VMInfo, error) {
-	var vm mo.VirtualMachine
-	if err := pc.RetrieveOne(ctx, ref, []string{"summary"}, &vm); err != nil {
-		return VMInfo{}, fmt.Errorf("retrieve summary: %w", err)
+// sumFromMo extracts a VMInfo from a populated mo.VirtualMachine. The summary
+// already contains Name, NumCpu, MemorySizeMB and Storage.Committed so we do
+// not need to retrieve the full Config.
+func sumFromMo(vm *mo.VirtualMachine) (VMInfo, error) {
+	if vm == nil {
+		return VMInfo{}, fmt.Errorf("nil VM object")
 	}
 
 	sum := vm.Summary
@@ -87,10 +92,10 @@ func fetchVMSummary(ctx context.Context, pc *property.Collector, ref types.Manag
 	}
 
 	return VMInfo{
-		Name:      name,
-		VCPUs:     vcpu,
-		MemoryMB:  memMB,
-		StorageB:  storedB,
+		Name:     name,
+		VCPUs:    vcpu,
+		MemoryMB: memMB,
+		StorageB: storedB,
 	}, nil
 }
 
@@ -119,31 +124,72 @@ func ListVMsByPortGroup(ctx context.Context, c *vim25.Client, pgName string) ([]
 
 	pc := property.DefaultCollector(c)
 
+	// Step 1 — batch-fetch summaries for every VM.
+	var allVms []mo.VirtualMachine
+	if len(vmRefs) > 0 {
+		if err := pc.Retrieve(ctx, vmRefs, []string{"summary"}, &allVms); err != nil {
+			return nil, fmt.Errorf("batch retrieve VM summaries: %w", err)
+		}
+	}
+
+	vmInfoByRef := make(map[string]VMInfo, len(allVms))
+	for i := range allVms {
+		info, err := sumFromMo(&allVms[i])
+		if err != nil {
+			continue
+		}
+		vmInfoByRef[vmRefs[i].Value] = info
+	}
+
+	// Step 2 — batch-fetch config.hardware.device for every VM.
+	var allDevices []mo.VirtualMachine
+	if len(vmRefs) > 0 {
+		if err := pc.Retrieve(ctx, vmRefs, []string{"config.hardware.device"}, &allDevices); err != nil {
+			return nil, fmt.Errorf("batch retrieve NIC backings: %w", err)
+		}
+	}
+
+	var stdNetRefs []types.ManagedObjectReference
+	nicMap := make(map[string][]nicBacking) // vm ref value -> its nic backings
+	for i, ref := range vmRefs {
+		backings := parseNicBackings(&allDevices[i])
+		nicMap[ref.Value] = backings
+		for _, b := range backings {
+			if b.networkRef != nil {
+				stdNetRefs = append(stdNetRefs, *b.networkRef)
+			}
+		}
+	}
+
+	// Step 3 — batch-fetch names of every standard network referenced.
+	netNameByValue := make(map[string]string)
+	if len(stdNetRefs) > 0 {
+		var nets []mo.Network
+		if err := pc.Retrieve(ctx, stdNetRefs, []string{"name"}, &nets); err != nil {
+			return nil, fmt.Errorf("batch retrieve network names: %w", err)
+		}
+		for i, n := range nets {
+			if n.Name != "" && i < len(stdNetRefs) {
+				netNameByValue[stdNetRefs[i].Value] = n.Name
+			}
+		}
+	}
+
+	// Step 4 — resolve DVS port group key -> name map.
 	dvsPgMap, err := listDVSPortGroupNames(ctx, c)
 	if err != nil {
 		return nil, fmt.Errorf("resolving DVS port group names: %w", err)
 	}
 
-	// Pre-fetch summaries for every VM so matchingVM can return full info without
-	// an extra property call per reference.
-	vmInfoCache := make(map[string]VMInfo, len(vmRefs))
+	var matched []VMInfo
 	for _, ref := range vmRefs {
-		info, err := fetchVMSummary(ctx, pc, ref)
-		if err != nil {
+		info, ok := vmInfoByRef[ref.Value]
+		if !ok {
 			continue
 		}
-		vmInfoCache[ref.Value] = info
-	}
-
-	var matched []VMInfo
-
-	for _, ref := range vmRefs {
-		nics, err := fetchVMMacBackings(ctx, pc, ref)
-		if err != nil {
-			continue // skip VMs we cannot read; do not fail the whole query
+		if matchAgainstPG(nicMap[ref.Value], stdNetRefs, netNameByValue, dvsPgMap, pgName) {
+			matched = append(matched, info)
 		}
-
-		matched = append(matched, nics.matchingVM(c, pgName, dvsPgMap, vmInfoCache[ref.Value])...)
 	}
 
 	sort.Slice(matched, func(i, j int) bool {
@@ -160,22 +206,11 @@ type nicBacking struct {
 	dvsPortgroupKey string                        // DVS PG: key string (e.g. "grp-12345")
 }
 
-// nicsResult is the parsed NIC list for a single VM, used to match against a
-// target port-group name without needing an additional property lookup per VM.
-type nicsResult struct {
-	backings []nicBacking
-}
-
-func fetchVMMacBackings(ctx context.Context, pc *property.Collector, ref types.ManagedObjectReference) (nicsResult, error) {
-	var vm mo.VirtualMachine
-	if err := pc.RetrieveOne(ctx, ref, []string{"config.hardware.device"}, &vm); err != nil {
-		return nicsResult{}, err
-	}
-
-	r := nicsResult{}
-
-	if vm.Config == nil {
-		return r, nil
+// parseNicBackings extracts NIC backings from a populated mo.VirtualMachine.
+func parseNicBackings(vm *mo.VirtualMachine) []nicBacking {
+	var out []nicBacking
+	if vm == nil || vm.Config == nil {
+		return out
 	}
 
 	for _, dev := range vm.Config.Hardware.Device {
@@ -203,31 +238,28 @@ func fetchVMMacBackings(ctx context.Context, pc *property.Collector, ref types.M
 			continue
 		}
 
-		r.backings = append(r.backings, b)
+		out = append(out, b)
 	}
 
-	return r, nil
+	return out
 }
 
-// matchingVM returns a VMInfo (or empty slice if no NIC matches the target PG).
-// vmInfo is pre-fetched from fetchVMSummary so we can return a complete record.
-func (r nicsResult) matchingVM(c *vim25.Client, n string, pgKeyNames map[string]string, vmInfo VMInfo) []VMInfo {
-	pc := property.DefaultCollector(c)
-
-	for _, b := range r.backings {
+// matchAgainstPG returns true if any of the VM's NIC backings connect to the
+// target port group — either by exact standard-network name or by DVS portgroup key.
+func matchAgainstPG(backings []nicBacking, stdNetRefs []types.ManagedObjectReference, netNameByValue map[string]string, dvsPgMap map[string]string, pg string) bool {
+	for _, b := range backings {
 		if b.networkRef != nil {
-			var net mo.Network
-			if err := pc.RetrieveOne(context.TODO(), *b.networkRef, []string{"name"}, &net); err == nil && net.Name == n {
-				return []VMInfo{vmInfo}
+			if name, ok := netNameByValue[b.networkRef.Value]; ok && name == pg {
+				return true
 			}
 		}
 		if b.dvsPortgroupKey != "" {
-			if mapped := pgKeyNames[b.dvsPortgroupKey]; mapped == n {
-				return []VMInfo{vmInfo}
+			if mapped := dvsPgMap[b.dvsPortgroupKey]; mapped == pg {
+				return true
 			}
 		}
 	}
-	return nil
+	return false
 }
 
 // listDVSPortGroupNames builds a map of DVS port group key -> name by walking
@@ -251,18 +283,28 @@ func listDVSPortGroupNames(ctx context.Context, c *vim25.Client) (map[string]str
 	}
 
 	pc := property.DefaultCollector(c)
-	out := make(map[string]string)
 
-	for _, ref := range dvsRefs {
-		var dvs mo.DistributedVirtualSwitch
-		if err := pc.RetrieveOne(ctx, ref, []string{"name", "portgroup"}, &dvs); err != nil {
-			continue // skip unreadable DVS; do not fail whole query
+	var dvss []mo.DistributedVirtualSwitch
+	if len(dvsRefs) > 0 {
+		if err := pc.Retrieve(ctx, dvsRefs, []string{"name", "portgroup"}, &dvss); err != nil {
+			return nil, fmt.Errorf("batch retrieve DVS objects: %w", err)
 		}
+	}
 
-		for _, pgRef := range dvs.Portgroup {
-			var pg mo.DistributedVirtualPortgroup
-			if err := pc.RetrieveOne(ctx, pgRef, []string{"name"}, &pg); err == nil && pg.Name != "" {
-				out[pgRef.Value] = pg.Name
+	pgRefs := make([]types.ManagedObjectReference, 0)
+	for _, dvs := range dvss {
+		pgRefs = append(pgRefs, dvs.Portgroup...)
+	}
+
+	out := make(map[string]string)
+	if len(pgRefs) > 0 {
+		var pgs []mo.DistributedVirtualPortgroup
+		if err := pc.Retrieve(ctx, pgRefs, []string{"name"}, &pgs); err != nil {
+			return nil, fmt.Errorf("batch retrieve DVS port groups: %w", err)
+		}
+		for i, pg := range pgs {
+			if pg.Name != "" && i < len(pgRefs) {
+				out[pgRefs[i].Value] = pg.Name
 			}
 		}
 	}

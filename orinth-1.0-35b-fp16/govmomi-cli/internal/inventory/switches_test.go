@@ -22,6 +22,7 @@ func TestListSwitches_Simulator(t *testing.T) {
 			t.Fatal("ListSwitches returned no port groups")
 		}
 
+		hasStandard := false
 		for _, s := range switches {
 			if s.Switch == "" {
 				t.Error("ListSwitches: empty switch name")
@@ -40,7 +41,6 @@ func TestListSwitches_Simulator(t *testing.T) {
 			// VLAN values should either be parseable as a single int or match known patterns.
 			if s.VLAN != "" {
 				if _, err := strconv.Atoi(s.VLAN); err != nil {
-					// Could be "1-4094" (trunk range) or PVLAN format — those are valid too.
 					validRange := false
 					for i := 0; i < len(s.VLAN)-4; i++ {
 						if s.VLAN[i] == '-' {
@@ -68,6 +68,21 @@ func TestListSwitches_Simulator(t *testing.T) {
 			default:
 				t.Errorf("ListSwitches %q/%q: LACP = %q, want enabled|disabled|N/A", s.Switch, s.PortGroup, s.LACP)
 			}
+
+			if s.SwitchType == "standard" {
+				hasStandard = true
+				// Standard switches backed by HostVirtualSwitch must expose a strictly
+				// lower UsedPorts than TotalPorts (NumPortsAvailable is non-zero on real
+				// vSwitches, including against the VPX simulator).
+				if s.UsedPorts >= s.TotalPorts {
+					t.Errorf("ListSwitches standard %q/%q: USED (%d) must be < TOTAL (%d), got Used==Total",
+						s.Switch, s.PortGroup, s.UsedPorts, s.TotalPorts)
+				}
+			}
+		}
+
+		if !hasStandard {
+			t.Error("ListSwitches: no standard switch port group found (C3 fix should surface them)")
 		}
 
 		return nil
