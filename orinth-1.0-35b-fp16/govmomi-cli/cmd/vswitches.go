@@ -23,26 +23,12 @@ and print SWITCH, SWITCH TYPE, PORTGROUP, VLAN, UPLINKS, LACP, TOTAL PORTS, USED
 
 With --portgroup <name>, list VMs connected to that named port group instead.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := getConfig()
-		if err != nil {
-			return err
-		}
-
-		rootCtx := cmd.Context()
-		ctx, cancel := context.WithTimeout(rootCtx, cfg.Timeout)
-		defer cancel()
-
-		cli, sm, err := newClient(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		defer closeClient(ctx, cli, sm)
-
-		if pgName != "" {
-			return runPortgroupMode(ctx, cli, pgName)
-		}
-
-		return runSwitchesMode(ctx, cli)
+		return runWithClient(cmd, func(ctx context.Context, cli *vim25.Client) error {
+			if pgName != "" {
+				return runPortgroupMode(ctx, cli, pgName)
+			}
+			return runSwitchesMode(ctx, cli)
+		})
 	},
 }
 
@@ -58,14 +44,18 @@ func runSwitchesMode(ctx context.Context, cli *vim25.Client) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SWITCH\tHOST\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tTOTAL PORTS\tUSED")
+	if _, err := fmt.Fprintln(tw, "SWITCH\tHOST\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tTOTAL PORTS\tUSED"); err != nil {
+		return err
+	}
 	for _, s := range switches {
 		host := s.Host
 		if host == "" {
 			host = "N/A"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			s.Switch, host, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, formatUsedPorts(s.UsedPorts, s.UsedPortsValid))
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
+			s.Switch, host, s.SwitchType, s.PortGroup, s.VLAN, s.Uplinks, s.LACP, s.TotalPorts, formatUsedPorts(s.UsedPorts, s.UsedPortsValid)); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
@@ -78,10 +68,14 @@ func runPortgroupMode(ctx context.Context, cli *vim25.Client, pg string) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tVCPU\tRAM (GiB)\tSTORAGE")
+	if _, err := fmt.Fprintln(tw, "NAME\tVCPU\tRAM (GiB)\tSTORAGE"); err != nil {
+		return err
+	}
 	for _, v := range vms {
-		fmt.Fprintf(tw, "%s\t%d\t%.1f GiB\t%s\n",
-			v.Name, v.VCPUs, float64(v.MemoryMB)/1024.0, inventory.FormatBytes(v.StorageB))
+		if _, err := fmt.Fprintf(tw, "%s\t%d\t%.1f GiB\t%s\n",
+			v.Name, v.VCPUs, float64(v.MemoryMB)/1024.0, inventory.FormatBytes(v.StorageB)); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
