@@ -37,6 +37,18 @@ func FormatBytes(bytes int64) string {
 	}
 }
 
+// FormatRAMGB formats RAM in GiB, showing fractional GiB for >= 0.01 GiB or MiB for smaller.
+func FormatRAMGB(gb float64) string {
+	if gb >= 1.0 {
+		return fmt.Sprintf("%.1f", gb)
+	}
+	if gb >= 0.01 {
+		return fmt.Sprintf("%.2f", gb)
+	}
+	mib := gb * 1024.0
+	return fmt.Sprintf("%.0f MiB", mib)
+}
+
 // FormatBytesRounded is like FormatBytes but rounds to the nearest whole number for values < 1 GiB.
 // Deprecated: Use FormatBytes for consistent units.
 func FormatBytesRounded(bytes int64) string {

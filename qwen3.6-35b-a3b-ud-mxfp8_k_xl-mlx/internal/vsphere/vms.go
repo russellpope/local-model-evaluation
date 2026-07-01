@@ -56,21 +56,31 @@ func ListVMs(ctx context.Context, client *govmomi.Client) ([]VMInfo, error) {
 		pc := client.PropertyCollector()
 
 		var moVMs []mo.VirtualMachine
-		if err := pc.Retrieve(ctx, vmRefs, []string{"summary", "summary.storage.committed"}, &moVMs); err != nil {
+		if err := pc.Retrieve(ctx, vmRefs, []string{"summary", "summary.storage.committed", "self"}, &moVMs); err != nil {
 			continue
 		}
 
-		for i, vm := range vms {
+		moMap := make(map[string]*mo.VirtualMachine, len(moVMs))
+		for i := range moVMs {
+			moMap[moVMs[i].Self.Value] = &moVMs[i]
+		}
+
+		for _, vm := range vms {
+			moVM, ok := moMap[vm.Reference().Value]
+			if !ok {
+				continue
+			}
+
 			committed := int64(0)
-			if moVMs[i].Summary.Storage != nil {
-				committed = moVMs[i].Summary.Storage.Committed
+			if moVM.Summary.Storage != nil {
+				committed = moVM.Summary.Storage.Committed
 			}
 
 			numCPU := int32(0)
 			memMB := int32(0)
-			if moVMs[i].Summary.Config.NumCpu > 0 {
-				numCPU = moVMs[i].Summary.Config.NumCpu
-				memMB = int32(moVMs[i].Summary.Config.MemorySizeMB)
+			if moVM.Summary.Config.NumCpu > 0 {
+				numCPU = moVM.Summary.Config.NumCpu
+				memMB = int32(moVM.Summary.Config.MemorySizeMB)
 			}
 
 			memGB := float64(memMB) / 1024.0

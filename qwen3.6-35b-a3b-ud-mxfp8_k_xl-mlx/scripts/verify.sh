@@ -94,37 +94,29 @@ if ! echo "$VSW_OUTPUT" | grep -qi "distributed"; then
 fi
 echo "PASS: vswitches shows both standard and distributed switches"
 
-# Extract a port group name from vswitches output
-PG_NAME=$(echo "$VSW_OUTPUT" | grep -v "SWITCH" | grep -v "^$" | head -1 | sed 's/^[[:space:]]*//' | cut -d' ' -f3-)
+# Use DC0_DVPG0 since VPX simulator only attaches VMs to distributed port groups
+PG_NAME="DC0_DVPG0"
 
-# If extraction didn't work, use a known port group
-if echo "$PG_NAME" | grep -q "SWITCH\|LACP\|PORTS\|USED\|key-vim\|1536\|N/A"; then
-    PG_NAME="VM Network"
+echo ""
+echo "=== Running: ./$BINARY vswitches --portgroup $PG_NAME ==="
+PG_OUTPUT=$("./$BINARY" vswitches --portgroup "$PG_NAME") || { kill $VCSIM_PID 2>/dev/null; exit 1; }
+echo "$PG_OUTPUT"
+if ! echo "$PG_OUTPUT" | grep -qv "VM NAME\|^$\|SWITCH\|PORT GROUP"; then
+    echo "FAIL: vswitches --portgroup $PG_NAME returned header only, no VM rows" >&2
+    kill $VCSIM_PID 2>/dev/null; exit 1
 fi
-
-if [ -n "$PG_NAME" ] && [ "$PG_NAME" != "-" ]; then
-    echo ""
-    echo "=== Running: ./$BINARY vswitches --portgroup $PG_NAME ==="
-    PG_OUTPUT=$("./$BINARY" vswitches --portgroup "$PG_NAME") || { kill $VCSIM_PID 2>/dev/null; exit 1; }
-    echo "$PG_OUTPUT"
-    echo "PASS: vswitches --portgroup $PG_NAME returned data"
-else
-    echo ""
-    echo "=== No port group found, using VM Network ==="
-    PG_NAME="VM Network"
-    echo ""
-    echo "=== Running: ./$BINARY vswitches --portgroup $PG_NAME ==="
-    PG_OUTPUT=$("./$BINARY" vswitches --portgroup "$PG_NAME") || { kill $VCSIM_PID 2>/dev/null; exit 1; }
-    echo "$PG_OUTPUT"
-    echo "PASS: vswitches --portgroup $PG_NAME returned data"
-fi
+echo "PASS: vswitches --portgroup $PG_NAME returned VM rows"
 
 # Test distributed port group
 echo ""
 echo "=== Running: ./$BINARY vswitches --portgroup DC0_DVPG0 ==="
 DIST_PG_OUTPUT=$("./$BINARY" vswitches --portgroup "DC0_DVPG0") || { kill $VCSIM_PID 2>/dev/null; exit 1; }
 echo "$DIST_PG_OUTPUT"
-echo "PASS: vswitches --portgroup DC0_DVPG0 returned data"
+if ! echo "$DIST_PG_OUTPUT" | grep -qv "VM NAME\|^$\|SWITCH\|PORT GROUP"; then
+    echo "FAIL: vswitches --portgroup DC0_DVPG0 returned header only, no VM rows" >&2
+    kill $VCSIM_PID 2>/dev/null; exit 1
+fi
+echo "PASS: vswitches --portgroup DC0_DVPG0 returned VM rows"
 
 # Clean up vcsim
 echo ""

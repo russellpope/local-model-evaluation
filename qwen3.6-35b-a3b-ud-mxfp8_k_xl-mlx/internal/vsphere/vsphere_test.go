@@ -192,13 +192,34 @@ func TestPortGroupVMs(t *testing.T) {
 	client := createSimClient(t, model)
 	defer client.Logout(context.Background())
 
-	// Test standard port group
-	vms, err := ListPortGroupVMs(context.Background(), client, "VM Network")
+	finder := find.NewFinder(client.Client, false)
+	datacenters, err := finder.DatacenterList(context.Background(), "*")
 	if err != nil {
-		t.Logf("ListPortGroupVMs for VM Network: %v (simulator may not populate VM network refs)", err)
+		t.Fatalf("list datacenters: %v", err)
+	}
+	if len(datacenters) == 0 {
+		t.Fatal("no datacenters found")
+	}
+	finder.SetDatacenter(datacenters[0])
+	allVMs, err := finder.VirtualMachineList(context.Background(), "*")
+	if err != nil {
+		t.Fatalf("list VMs: %v", err)
+	}
+	if len(allVMs) == 0 {
+		t.Fatal("no VMs in simulator")
+	}
+	allVMNames := make(map[string]bool)
+	for _, vm := range allVMs {
+		allVMNames[vm.Name()] = true
 	}
 
-	// Simulator may not populate VM network references, so 0 VMs is acceptable
+	vms, err := ListPortGroupVMs(context.Background(), client, "VM Network")
+	if err != nil {
+		t.Logf("ListPortGroupVMs for VM Network: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Log("VM Network returned 0 VMs (simulator may not attach VMs to standard PG)")
+	}
 	for _, vm := range vms {
 		if vm.Name == "" {
 			t.Error("VM has empty name in port group result")
@@ -206,14 +227,18 @@ func TestPortGroupVMs(t *testing.T) {
 		if vm.PortGroup != "VM Network" {
 			t.Errorf("VM %s has PortGroup=%q, want VM Network", vm.Name, vm.PortGroup)
 		}
+		if !allVMNames[vm.Name] {
+			t.Errorf("VM %s not in datacenter VM list", vm.Name)
+		}
 	}
 
-	// Test distributed port group (VPX model creates DVS0 with DVPG0)
 	vms, err = ListPortGroupVMs(context.Background(), client, "DC0_DVPG0")
 	if err != nil {
 		t.Fatalf("ListPortGroupVMs for DC0_DVPG0: %v", err)
 	}
-
+	if len(vms) == 0 {
+		t.Fatal("DC0_DVPG0 returned 0 VMs, want at least 1")
+	}
 	for _, vm := range vms {
 		if vm.Name == "" {
 			t.Error("VM has empty name in distributed port group result")
@@ -221,9 +246,11 @@ func TestPortGroupVMs(t *testing.T) {
 		if vm.PortGroup != "DC0_DVPG0" {
 			t.Errorf("VM %s has PortGroup=%q, want DC0_DVPG0", vm.Name, vm.PortGroup)
 		}
+		if !allVMNames[vm.Name] {
+			t.Errorf("VM %s not in datacenter VM list", vm.Name)
+		}
 	}
 
-	// Test non-existent port group
 	_, err = ListPortGroupVMs(context.Background(), client, "nonexistent-pg")
 	if err == nil {
 		t.Error("ListPortGroupVMs should return error for non-existent port group")

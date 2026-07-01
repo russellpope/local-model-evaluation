@@ -9,7 +9,6 @@ import (
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 )
@@ -189,7 +188,7 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 	}
 
 	var dvsList []mo.DistributedVirtualSwitch
-	if err := pc.Retrieve(ctx, allDVSRefs, []string{"name", "portgroup"}, &dvsList); err != nil {
+	if err := pc.Retrieve(ctx, allDVSRefs, []string{"name", "portgroup", "summary"}, &dvsList); err != nil {
 		return nil, fmt.Errorf("retrieve distributed switch properties: %w", err)
 	}
 
@@ -208,11 +207,34 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 			})
 		}
 
+		totalPorts := dvs.Summary.NumPorts
+		// Derive total ports from host members if simulator doesn't populate it.
+		if totalPorts <= 0 && len(dvs.Summary.HostMember) > 0 {
+			// Get port count from one of the host members' standard switch.
+			for _, hostRef := range dvs.Summary.HostMember {
+				var hostMo mo.HostSystem
+				if err := pc.RetrieveOne(ctx, hostRef, []string{"config.network.vswitch"}, &hostMo); err != nil {
+					continue
+				}
+				if hostMo.Config != nil && hostMo.Config.Network != nil {
+					for _, vsw := range hostMo.Config.Network.Vswitch {
+						if vsw.NumPorts > 0 {
+							totalPorts = vsw.NumPorts * int32(len(dvs.Summary.HostMember))
+							break
+						}
+					}
+				}
+				if totalPorts > 0 {
+					break
+				}
+			}
+		}
+
 		result = append(result, SwitchInfo{
 			SwitchName: dvs.Name,
 			SwitchType: "distributed",
 			PortGroups: portGroups,
-			TotalPorts: dvs.Summary.NumPorts,
+			TotalPorts: totalPorts,
 			LACP:       "N/A",
 		})
 	}
@@ -228,74 +250,39 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 		return nil, fmt.Errorf("list datacenters: %w", err)
 	}
 
+	// Try distributed port group back-reference first (fast path for DVS where vcsim may populate it).
 	for _, dc := range datacenters {
 		folders, err := dc.Folders(ctx)
 		if err != nil {
 			continue
 		}
-
 		if folders.NetworkFolder == nil {
 			continue
 		}
-
 		nets, err := folders.NetworkFolder.Children(ctx)
 		if err != nil {
 			continue
 		}
-
-		var targetNet object.Reference
 		for _, net := range nets {
-			if net.Reference().Type == "Network" || net.Reference().Type == "DistributedVirtualPortgroup" {
-				var netMo mo.Network
+			if net.Reference().Type == "DistributedVirtualPortgroup" {
+				var pgMo mo.DistributedVirtualPortgroup
 				pc := client.PropertyCollector()
-				if err := pc.RetrieveOne(ctx, net.Reference(), []string{"name"}, &netMo); err != nil {
+				if err := pc.RetrieveOne(ctx, net.Reference(), []string{"name", "Vm"}, &pgMo); err != nil {
 					continue
 				}
-				if strings.EqualFold(netMo.Name, portGroupName) {
-					targetNet = object.NewNetwork(client.Client, net.Reference())
-					break
-				}
-			}
-		}
-
-		if targetNet != nil {
-			return fetchNetworkVMs(ctx, client, targetNet.Reference(), portGroupName)
-		}
-	}
-
-	for _, dc := range datacenters {
-		hostFinder := find.NewFinder(client.Client, false)
-		hostFinder.SetDatacenter(dc)
-		hosts, err := hostFinder.HostSystemList(ctx, "*")
-		if err != nil {
-			continue
-		}
-
-		var targetPGName string
-		for _, h := range hosts {
-			var hostMo mo.HostSystem
-			pc := client.PropertyCollector()
-			if err := pc.RetrieveOne(ctx, h.Reference(), []string{"config.network.portgroup"}, &hostMo); err != nil {
-				continue
-			}
-
-			if hostMo.Config != nil && hostMo.Config.Network != nil {
-				for _, pg := range hostMo.Config.Network.Portgroup {
-					if strings.EqualFold(pg.Spec.Name, portGroupName) {
-						targetPGName = pg.Spec.Name
-						break
+				if strings.EqualFold(pgMo.Name, portGroupName) {
+					vms := tryBackrefVMs(ctx, client, pgMo.Vm, portGroupName)
+					if len(vms) > 0 {
+						return vms, nil
 					}
 				}
 			}
-			if targetPGName != "" {
-				break
-			}
 		}
+	}
 
-		if targetPGName == "" {
-			continue
-		}
-
+	// Primary method: per-VM forward-ref scan using both Network field and hardware device backing.
+	// The Network field is often empty in simulators, so we also check config.hardware.device.
+	for _, dc := range datacenters {
 		vmFinder := find.NewFinder(client.Client, false)
 		vmFinder.SetDatacenter(dc)
 		vmList, err := vmFinder.VirtualMachineList(ctx, "*")
@@ -303,14 +290,31 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 			continue
 		}
 
+		// Build DPG key->name map for distributed port group matching.
+		folders, _ := dc.Folders(ctx)
+		dpgKeyToName := make(map[string]string)
+		if folders != nil && folders.NetworkFolder != nil {
+			children, _ := folders.NetworkFolder.Children(ctx)
+			for _, child := range children {
+				if child.Reference().Type == "DistributedVirtualPortgroup" {
+					var pgMo mo.DistributedVirtualPortgroup
+					pc := client.PropertyCollector()
+					if err := pc.RetrieveOne(ctx, child.Reference(), []string{"name"}, &pgMo); err == nil {
+						dpgKeyToName[child.Reference().Value] = pgMo.Name
+					}
+				}
+			}
+		}
+
 		var result []SwitchVMInfo
 		for _, vm := range vmList {
 			var moVM mo.VirtualMachine
 			pc := client.PropertyCollector()
-			if err := pc.RetrieveOne(ctx, vm.Reference(), []string{"Name", "Network"}, &moVM); err != nil {
+			if err := pc.RetrieveOne(ctx, vm.Reference(), []string{"Network", "config.hardware.device"}, &moVM); err != nil {
 				continue
 			}
 
+			// Check Network field (standard PGs where populated).
 			for _, netRef := range moVM.Network {
 				var netMo mo.Network
 				if err := pc.RetrieveOne(ctx, netRef, []string{"name"}, &netMo); err != nil {
@@ -318,56 +322,87 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 				}
 				if strings.EqualFold(netMo.Name, portGroupName) {
 					result = append(result, SwitchVMInfo{
-						Name:      moVM.Name,
+						Name:      vm.Name(),
 						Moref:     vm.Reference().Value,
 						PortGroup: portGroupName,
 					})
-					break
+					goto done
 				}
 			}
+
+			// Check hardware device backing for network adapters.
+			if matchFromDevice(&moVM, portGroupName, dpgKeyToName) {
+				result = append(result, SwitchVMInfo{
+					Name:      vm.Name(),
+					Moref:     vm.Reference().Value,
+					PortGroup: portGroupName,
+				})
+			}
+
+		done:
 		}
 
-		sort.Slice(result, func(i, j int) bool {
-			return result[i].Name < result[j].Name
-		})
-
-		return result, nil
+		if len(result) > 0 {
+			sort.Slice(result, func(i, j int) bool {
+				return result[i].Name < result[j].Name
+			})
+			return result, nil
+		}
 	}
 
 	return nil, fmt.Errorf("port group %q not found", portGroupName)
 }
 
-// fetchNetworkVMs retrieves VMs connected to a network reference.
-func fetchNetworkVMs(ctx context.Context, client *govmomi.Client, netRef types.ManagedObjectReference, portGroupName string) ([]SwitchVMInfo, error) {
-	pc := client.PropertyCollector()
-	var nets []mo.Network
-	if err := pc.Retrieve(ctx, []types.ManagedObjectReference{netRef}, []string{"name", "Vm"}, &nets); err != nil {
-		return nil, fmt.Errorf("retrieve network properties: %w", err)
+// matchFromDevice checks if a VM's hardware devices indicate connection to the given port group.
+func matchFromDevice(moVM *mo.VirtualMachine, portGroupName string, dpgKeyToName map[string]string) bool {
+	if moVM.Config == nil || moVM.Config.Hardware.Device == nil {
+		return false
 	}
-
-	if len(nets) == 0 {
-		return nil, nil
-	}
-
-	var result []SwitchVMInfo
-	for _, net := range nets {
-		for _, vmRef := range net.Vm {
-			var moVM mo.VirtualMachine
-			if err := pc.RetrieveOne(ctx, vmRef, []string{"Name"}, &moVM); err != nil {
-				continue
+	for _, dev := range moVM.Config.Hardware.Device {
+		vdev := dev.GetVirtualDevice()
+		if vdev == nil || vdev.Backing == nil {
+			continue
+		}
+		backing := vdev.Backing
+		// Standard network backing (for standard port groups).
+		if nb, ok := backing.(*types.VirtualEthernetCardNetworkBackingInfo); ok {
+			if nb.Network != nil && strings.EqualFold(nb.Network.Value, portGroupName) {
+				return true
 			}
-
-			result = append(result, SwitchVMInfo{
-				Name:      moVM.Name,
-				Moref:     vmRef.Value,
-				PortGroup: portGroupName,
-			})
+		}
+		// Distributed virtual port backing (for distributed port groups).
+		if dvb, ok := backing.(*types.VirtualEthernetCardDistributedVirtualPortBackingInfo); ok {
+			pgKey := dvb.Port.PortgroupKey
+			if name, ok := dpgKeyToName[pgKey]; ok && strings.EqualFold(name, portGroupName) {
+				return true
+			}
 		}
 	}
+	return false
+}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name < result[j].Name
-	})
-
-	return result, nil
+// tryBackrefVMs resolves VMs from a DPG's Vm back-reference list.
+func tryBackrefVMs(ctx context.Context, client *govmomi.Client, vmRefs []types.ManagedObjectReference, portGroupName string) []SwitchVMInfo {
+	if len(vmRefs) == 0 {
+		return nil
+	}
+	pc := client.PropertyCollector()
+	var result []SwitchVMInfo
+	for _, vmRef := range vmRefs {
+		var moVM mo.VirtualMachine
+		if err := pc.RetrieveOne(ctx, vmRef, []string{"Name"}, &moVM); err != nil {
+			continue
+		}
+		result = append(result, SwitchVMInfo{
+			Name:      moVM.Name,
+			Moref:     vmRef.Value,
+			PortGroup: portGroupName,
+		})
+	}
+	if len(result) > 0 {
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].Name < result[j].Name
+		})
+	}
+	return result
 }
