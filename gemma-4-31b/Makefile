@@ -18,7 +18,7 @@ verify: build test
 	export VSPHERE_USERNAME=user; \
 	export VSPHERE_PASSWORD=pass; \
 	export VSPHERE_INSECURE=true; \
-	(./govmomi-cli vms && ./govmomi-cli datastores && ./govmomi-cli vswitches && ./govmomi-cli vswitches --portgroup DC0_DVPG0); \
+	(./govmomi-cli vms && ./govmomi-cli datastores && ./govmomi-cli vswitches && ./govmomi-cli vswitches --portgroup DC0_DVPG0 && ./govmomi-cli vswitches --portgroup "VM Network"); \
 	EXIT_CODE=$$?; \
 	kill $$SIM_PID; \
 	exit $$EXIT_CODE

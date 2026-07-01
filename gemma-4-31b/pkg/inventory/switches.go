@@ -149,8 +149,8 @@ func processSwitches(dvsList []mo.DistributedVirtualSwitch, dvpgList []mo.Distri
 						VLAN:       vlan,
 						Uplinks:    "N/A",
 						LACP:       "N/A",
-						Ports:      0,
-						Used:       0,
+						Ports:      vsw.NumPorts,
+						Used:       vsw.NumPorts - vsw.NumPortsAvailable,
 					})
 				}
 			}
@@ -195,24 +195,21 @@ func GetVMsInPortgroup(ctx context.Context, client *vim25.Client, pgName string)
 	}
 	defer netView.Destroy(ctx)
 
-	var pgs []mo.DistributedVirtualPortgroup
-	err = netView.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name"}, &pgs)
+	var nets []mo.Network
+	err = netView.Retrieve(ctx, []string{"Network"}, []string{"name"}, &nets)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, pg := range pgs {
-		if pg.Name == pgName {
-			pgRef = pg.Reference().Value
+	for _, net := range nets {
+		if net.Name == pgName {
+			pgRef = net.Reference().Value
 			break
 		}
 	}
 
 	if pgRef == "" {
-		// Also check standard portgroups? The requirement says "Resolve the portgroup name to a MoRef via the Network list"
-		// Standard portgroups aren't in the DistributedVirtualPortgroup list.
-		// But for the sake of the mapping, we can use a different approach for VSS if needed.
-		// For now, let's stick to the requirement.
+		return nil, nil
 	}
 
 	view, err := getVMView(ctx, client)
@@ -241,4 +238,3 @@ func GetVMsInPortgroup(ctx context.Context, client *vim25.Client, pgName string)
 }
 
 // Remove processVMsInPortgroup as it's no longer needed.
-

@@ -38,6 +38,56 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 		return nil, fmt.Errorf("failed to retrieve datastore properties: %w", err)
 	}
 
+	transportMap := make(map[string]string)
+	hostView, err := getHostView(ctx, client)
+	if err == nil {
+		defer hostView.Destroy(ctx)
+		var hosts []mo.HostSystem
+		err = hostView.Retrieve(ctx, []string{"HostSystem"}, []string{"config.storageDevice"}, &hosts)
+		if err == nil {
+			for _, host := range hosts {
+				if host.Config == nil || host.Config.StorageDevice == nil {
+					continue
+				}
+
+				adapterMap := make(map[string]string)
+				for _, hba := range host.Config.StorageDevice.HostBusAdapter {
+					var key string
+					switch a := hba.(type) {
+					case *types.HostFibreChannelHba:
+						key = a.HostHostBusAdapter.Key
+						adapterMap[key] = "FC"
+					case *types.HostInternetScsiHba:
+						key = a.HostHostBusAdapter.Key
+						adapterMap[key] = "iSCSI"
+					case *types.HostPcieHba:
+						key = a.HostHostBusAdapter.Key
+						adapterMap[key] = "NVMe"
+					}
+				}
+
+				lunIdToName := make(map[string]string)
+				for _, baseLun := range host.Config.StorageDevice.ScsiLun {
+					if lun, ok := baseLun.(*types.ScsiLun); ok {
+						lunIdToName[lun.Key] = lun.CanonicalName
+					}
+				}
+
+				if host.Config.StorageDevice.MultipathInfo != nil {
+					for _, lunInfo := range host.Config.StorageDevice.MultipathInfo.Lun {
+						for _, p := range lunInfo.Path {
+							if trans, ok := adapterMap[p.Adapter]; ok {
+								if name, ok := lunIdToName[lunInfo.Lun]; ok {
+									transportMap[name] = trans
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	var result []DatastoreInfo
 	for _, ds := range dstores {
 		capacity := int64(ds.Summary.Capacity)
@@ -47,6 +97,15 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 		desc := TransportDescriptor{
 			SummaryType: ds.Summary.Type,
 			Info:        ds.Info,
+		}
+
+		if vmfs, ok := ds.Info.(*types.VmfsDatastoreInfo); ok && vmfs.Vmfs != nil {
+			for _, extent := range vmfs.Vmfs.Extent {
+				if trans, ok := transportMap[extent.DiskName]; ok {
+					desc.AdapterInfo = trans
+					break
+				}
+			}
 		}
 
 		result = append(result, DatastoreInfo{
