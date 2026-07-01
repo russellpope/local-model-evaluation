@@ -56,36 +56,27 @@ func ListVMs(ctx context.Context, client *govmomi.Client) ([]VMInfo, error) {
 		pc := client.PropertyCollector()
 
 		var moVMs []mo.VirtualMachine
-		if err := pc.Retrieve(ctx, vmRefs, []string{"config.name", "Config.Hardware.NumCPU", "Config.Hardware.MemoryMB", "Summary.Storage.Committed"}, &moVMs); err != nil {
+		if err := pc.Retrieve(ctx, vmRefs, []string{"summary", "summary.storage.committed"}, &moVMs); err != nil {
 			continue
 		}
 
-		for _, vm := range moVMs {
+		for i, vm := range vms {
 			committed := int64(0)
-
-			if vm.Summary.Storage != nil && vm.Summary.Storage.Committed != 0 {
-				committed = vm.Summary.Storage.Committed
-			}
-
-			name := vm.Name
-			if name == "" && vm.Config != nil {
-				name = vm.Config.Name
+			if moVMs[i].Summary.Storage != nil {
+				committed = moVMs[i].Summary.Storage.Committed
 			}
 
 			numCPU := int32(0)
-			if vm.Config != nil {
-				numCPU = vm.Config.Hardware.NumCPU
-			}
-
 			memMB := int32(0)
-			if vm.Config != nil {
-				memMB = vm.Config.Hardware.MemoryMB
+			if moVMs[i].Summary.Config.NumCpu > 0 {
+				numCPU = moVMs[i].Summary.Config.NumCpu
+				memMB = int32(moVMs[i].Summary.Config.MemorySizeMB)
 			}
 
 			memGB := float64(memMB) / 1024.0
 
 			allVMs = append(allVMs, VMInfo{
-				Name:    name,
+				Name:    vm.Name(),
 				VCPU:    numCPU,
 				RAMGB:   memGB,
 				Storage: formatter.FormatBytes(committed),

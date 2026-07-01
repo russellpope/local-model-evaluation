@@ -61,27 +61,27 @@ func ListDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInf
 	pc := client.PropertyCollector()
 
 	var datastores []mo.Datastore
-	if err := pc.Retrieve(ctx, dsRefs, []string{"name", "Summary", "Info"}, &datastores); err != nil {
+	if err := pc.Retrieve(ctx, dsRefs, []string{"summary", "Info"}, &datastores); err != nil {
 		return nil, fmt.Errorf("retrieve datastore properties: %w", err)
 	}
 
 	var result []DatastoreInfo
-	for _, ds := range datastores {
+	for i, ds := range allDS {
 		capacity := int64(0)
 		freeSpace := int64(0)
 
-		capacity = ds.Summary.Capacity
-		freeSpace = ds.Summary.FreeSpace
+		capacity = datastores[i].Summary.Capacity
+		freeSpace = datastores[i].Summary.FreeSpace
 
 		used := capacity - freeSpace
 		if used < 0 {
 			used = 0
 		}
 
-		dsType := classifyTransport(ds)
+		dsType := classifyTransport(datastores[i])
 
 		result = append(result, DatastoreInfo{
-			Name:      ds.Name,
+			Name:      ds.Name(),
 			Type:      dsType,
 			Used:      formatter.FormatBytes(used),
 			Available: formatter.FormatBytes(freeSpace),

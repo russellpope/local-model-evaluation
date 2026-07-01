@@ -64,25 +64,16 @@ func ListSwitches(ctx context.Context, client *govmomi.Client) ([]SwitchInfo, er
 
 // listStandardSwitches discovers standard vSwitches and their port groups.
 func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]SwitchInfo, error) {
-	var result []SwitchInfo
-
 	finder := find.NewFinder(client.Client, false)
 	datacenters, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
 		return nil, fmt.Errorf("list datacenters: %w", err)
 	}
 
+	seen := make(map[string]bool)
+	var result []SwitchInfo
+
 	for _, dc := range datacenters {
-		folders, err := dc.Folders(ctx)
-		if err != nil {
-			continue
-		}
-
-		if folders.HostFolder == nil {
-			continue
-		}
-
-		// Use finder to list all host systems under this datacenter
 		hostFinder := find.NewFinder(client.Client, false)
 		hostFinder.SetDatacenter(dc)
 		allHosts, err := hostFinder.HostSystemList(ctx, "*")
@@ -99,7 +90,6 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 			continue
 		}
 
-		// Retrieve vSwitch info including port counts
 		var hostMo []mo.HostSystem
 		pc := client.PropertyCollector()
 		if err := pc.Retrieve(ctx, hostRefs, []string{
@@ -117,15 +107,23 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 			netInfo := h.Config.Network
 
 			for _, vsw := range netInfo.Vswitch {
+				key := dc.Reference().Value + "/" + vsw.Name
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+
 				uplinks := append([]string(nil), vsw.Pnic...)
 
-				// Get port counts from HostVirtualSwitch
 				totalPorts := vsw.NumPorts
 				available := vsw.NumPortsAvailable
 				usedPorts := totalPorts - available
 
 				var portGroups []PortGroupInfo
 				for _, pg := range netInfo.Portgroup {
+					if pg.Spec.VswitchName != vsw.Name {
+						continue
+					}
 					vlan := "0"
 					if pg.Spec.VlanId != 0 {
 						vlan = strconv.Itoa(int(pg.Spec.VlanId))
@@ -156,104 +154,67 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 
 // listDistributedSwitches discovers vSphere Distributed Switches and their port groups.
 func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]SwitchInfo, error) {
-	rootFolder := client.Client.ServiceContent.RootFolder
-
-	var folder mo.Folder
-	pc := client.PropertyCollector()
-	if err := pc.RetrieveOne(ctx, rootFolder, []string{"ChildEntity"}, &folder); err != nil {
-		return nil, fmt.Errorf("retrieve root folder: %w", err)
+	finder := find.NewFinder(client.Client, false)
+	datacenters, err := finder.DatacenterList(ctx, "*")
+	if err != nil {
+		return nil, fmt.Errorf("list datacenters: %w", err)
 	}
 
-	var dvsRefs []types.ManagedObjectReference
-	for _, child := range folder.ChildEntity {
-		if child.Type == "DistributedVirtualSwitch" {
-			dvsRefs = append(dvsRefs, child)
+	pc := client.PropertyCollector()
+	var allDVSRefs []types.ManagedObjectReference
+
+	for _, dc := range datacenters {
+		folders, err := dc.Folders(ctx)
+		if err != nil {
+			continue
+		}
+		if folders.NetworkFolder == nil {
+			continue
+		}
+
+		children, err := folders.NetworkFolder.Children(ctx)
+		if err != nil {
+			continue
+		}
+
+		for _, child := range children {
+			if child.Reference().Type == "DistributedVirtualSwitch" {
+				allDVSRefs = append(allDVSRefs, child.Reference())
+			}
 		}
 	}
 
-	if len(dvsRefs) == 0 {
+	if len(allDVSRefs) == 0 {
 		return nil, nil
 	}
 
 	var dvsList []mo.DistributedVirtualSwitch
-	if err := pc.Retrieve(ctx, dvsRefs, []string{
-		"Name",
-		"Summary.NumPorts",
-		"Config",
-		"Portgroup",
-	}, &dvsList); err != nil {
+	if err := pc.Retrieve(ctx, allDVSRefs, []string{"name", "portgroup"}, &dvsList); err != nil {
 		return nil, fmt.Errorf("retrieve distributed switch properties: %w", err)
 	}
 
 	var result []SwitchInfo
 	for _, dvs := range dvsList {
-		totalPorts := int32(0)
-		if dvs.Summary.NumPorts != 0 {
-			totalPorts = dvs.Summary.NumPorts
-		}
-
-		var uplinks []string
-		lacpEnabled := "N/A"
-		if dvs.Config != nil {
-			config := dvs.Config.GetDVSConfigInfo()
-			if config != nil {
-				for _, upRef := range config.UplinkPortgroup {
-					var pgMo mo.DistributedVirtualPortgroup
-					if err := pc.RetrieveOne(ctx, upRef, []string{"Name"}, &pgMo); err == nil {
-						uplinks = append(uplinks, pgMo.Name)
-					}
-				}
-
-				var portGroups []PortGroupInfo
-				for _, pgRef := range dvs.Portgroup {
-					var pgMo mo.DistributedVirtualPortgroup
-					if err := pc.RetrieveOne(ctx, pgRef, []string{"Name", "Config.DefaultPortConfig"}, &pgMo); err != nil {
-						continue
-					}
-
-					pgInfo := PortGroupInfo{
-						Name: pgMo.Name,
-						VLAN: "0",
-					}
-
-					if pgMo.Config.DefaultPortConfig != nil {
-						portSetting := pgMo.Config.DefaultPortConfig.GetDVPortSetting()
-						if portSetting != nil && portSetting.VendorSpecificConfig != nil {
-							for _, entry := range portSetting.VendorSpecificConfig.KeyValue {
-								if strings.Contains(entry.Key, "vlan") || strings.Contains(entry.Key, "Vlan") {
-									pgInfo.VLAN = entry.OpaqueData
-								}
-							}
-						}
-					}
-
-					portGroups = append(portGroups, pgInfo)
-				}
-
-				result = append(result, SwitchInfo{
-					SwitchName: dvs.Name,
-					SwitchType: "distributed",
-					PortGroups: portGroups,
-					TotalPorts: totalPorts,
-					LACP:       lacpEnabled,
-					Uplinks:    uplinks,
-				})
-			} else {
-				result = append(result, SwitchInfo{
-					SwitchName: dvs.Name,
-					SwitchType: "distributed",
-					TotalPorts: totalPorts,
-					LACP:       lacpEnabled,
-				})
+		var portGroups []PortGroupInfo
+		for _, pgRef := range dvs.Portgroup {
+			var pgMo mo.DistributedVirtualPortgroup
+			if err := pc.RetrieveOne(ctx, pgRef, []string{"name"}, &pgMo); err != nil {
+				continue
 			}
-		} else {
-			result = append(result, SwitchInfo{
-				SwitchName: dvs.Name,
-				SwitchType: "distributed",
-				TotalPorts: totalPorts,
-				LACP:       lacpEnabled,
+
+			portGroups = append(portGroups, PortGroupInfo{
+				Name: pgMo.Name,
+				VLAN: "0",
 			})
 		}
+
+		result = append(result, SwitchInfo{
+			SwitchName: dvs.Name,
+			SwitchType: "distributed",
+			PortGroups: portGroups,
+			TotalPorts: dvs.Summary.NumPorts,
+			LACP:       "N/A",
+		})
 	}
 
 	return result, nil
@@ -261,15 +222,12 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 
 // ListPortGroupVMs returns VMs connected to a specific port group (standard or distributed).
 func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName string) ([]SwitchVMInfo, error) {
-	var result []SwitchVMInfo
-
 	finder := find.NewFinder(client.Client, false)
 	datacenters, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
 		return nil, fmt.Errorf("list datacenters: %w", err)
 	}
 
-	var targetNet object.Reference
 	for _, dc := range datacenters {
 		folders, err := dc.Folders(ctx)
 		if err != nil {
@@ -280,17 +238,17 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 			continue
 		}
 
-		// Search in the datacenter's network folder
 		nets, err := folders.NetworkFolder.Children(ctx)
 		if err != nil {
 			continue
 		}
 
+		var targetNet object.Reference
 		for _, net := range nets {
 			if net.Reference().Type == "Network" || net.Reference().Type == "DistributedVirtualPortgroup" {
 				var netMo mo.Network
 				pc := client.PropertyCollector()
-				if err := pc.RetrieveOne(ctx, net.Reference(), []string{"Name"}, &netMo); err != nil {
+				if err := pc.RetrieveOne(ctx, net.Reference(), []string{"name"}, &netMo); err != nil {
 					continue
 				}
 				if strings.EqualFold(netMo.Name, portGroupName) {
@@ -301,111 +259,97 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 		}
 
 		if targetNet != nil {
-			break
+			return fetchNetworkVMs(ctx, client, targetNet.Reference(), portGroupName)
 		}
 	}
 
-	if targetNet == nil {
-		// Also search root folder for distributed port groups that might be there
-		rootFolder := client.Client.ServiceContent.RootFolder
-		var folder mo.Folder
-		pc := client.PropertyCollector()
-		if err := pc.RetrieveOne(ctx, rootFolder, []string{"ChildEntity"}, &folder); err == nil {
-			for _, child := range folder.ChildEntity {
-				if child.Type == "DistributedVirtualPortgroup" {
-					var netMo mo.Network
-					if err := pc.RetrieveOne(ctx, child, []string{"Name"}, &netMo); err == nil {
-						if strings.EqualFold(netMo.Name, portGroupName) {
-							targetNet = child
-							break
-						}
-					}
-				}
-			}
+	for _, dc := range datacenters {
+		hostFinder := find.NewFinder(client.Client, false)
+		hostFinder.SetDatacenter(dc)
+		hosts, err := hostFinder.HostSystemList(ctx, "*")
+		if err != nil {
+			continue
 		}
-	}
 
-	if targetNet == nil {
-		// For standard port groups, they may not be in the network folder
-		// but listed in the host's network config.
-		// Try to find the port group in host network configs.
-		for _, dc := range datacenters {
-			hostFinder := find.NewFinder(client.Client, false)
-			hostFinder.SetDatacenter(dc)
-			hosts, err := hostFinder.HostSystemList(ctx, "*")
-			if err != nil {
+		var targetPGName string
+		for _, h := range hosts {
+			var hostMo mo.HostSystem
+			pc := client.PropertyCollector()
+			if err := pc.RetrieveOne(ctx, h.Reference(), []string{"config.network.portgroup"}, &hostMo); err != nil {
 				continue
 			}
 
-			for _, h := range hosts {
-				var hostMo mo.HostSystem
-				pc := client.PropertyCollector()
-				if err := pc.RetrieveOne(ctx, h.Reference(), []string{"config.network.portgroup"}, &hostMo); err != nil {
+			if hostMo.Config != nil && hostMo.Config.Network != nil {
+				for _, pg := range hostMo.Config.Network.Portgroup {
+					if strings.EqualFold(pg.Spec.Name, portGroupName) {
+						targetPGName = pg.Spec.Name
+						break
+					}
+				}
+			}
+			if targetPGName != "" {
+				break
+			}
+		}
+
+		if targetPGName == "" {
+			continue
+		}
+
+		vmFinder := find.NewFinder(client.Client, false)
+		vmFinder.SetDatacenter(dc)
+		vmList, err := vmFinder.VirtualMachineList(ctx, "*")
+		if err != nil {
+			continue
+		}
+
+		var result []SwitchVMInfo
+		for _, vm := range vmList {
+			var moVM mo.VirtualMachine
+			pc := client.PropertyCollector()
+			if err := pc.RetrieveOne(ctx, vm.Reference(), []string{"Name", "Network"}, &moVM); err != nil {
+				continue
+			}
+
+			for _, netRef := range moVM.Network {
+				var netMo mo.Network
+				if err := pc.RetrieveOne(ctx, netRef, []string{"name"}, &netMo); err != nil {
 					continue
 				}
-
-				if hostMo.Config != nil && hostMo.Config.Network != nil {
-					for _, pg := range hostMo.Config.Network.Portgroup {
-						if strings.EqualFold(pg.Spec.Name, portGroupName) {
-							// Found the port group. For standard port groups,
-							// we need to find VMs by checking their network connections.
-							// Use the VM's Network field to find connected VMs.
-							vmFinder := find.NewFinder(client.Client, false)
-							vmFinder.SetDatacenter(dc)
-							vmList, err := vmFinder.VirtualMachineList(ctx, "*")
-							if err != nil {
-								continue
-							}
-
-							for _, vm := range vmList {
-								var moVM mo.VirtualMachine
-								if err := pc.RetrieveOne(ctx, vm.Reference(), []string{"Name", "Network"}, &moVM); err != nil {
-									continue
-								}
-
-								// Check if any of the VM's networks match the port group
-								// We need to resolve the network name for each network reference
-								for _, netRef := range moVM.Network {
-									var netMo mo.Network
-									if err := pc.RetrieveOne(ctx, netRef, []string{"Name"}, &netMo); err != nil {
-										continue
-									}
-									if strings.EqualFold(netMo.Name, portGroupName) {
-										result = append(result, SwitchVMInfo{
-											Name:      moVM.Name,
-											Moref:     vm.Reference().Value,
-											PortGroup: portGroupName,
-										})
-										break
-									}
-								}
-							}
-
-							sort.Slice(result, func(i, j int) bool {
-								return result[i].Name < result[j].Name
-							})
-
-							return result, nil
-						}
-					}
+				if strings.EqualFold(netMo.Name, portGroupName) {
+					result = append(result, SwitchVMInfo{
+						Name:      moVM.Name,
+						Moref:     vm.Reference().Value,
+						PortGroup: portGroupName,
+					})
+					break
 				}
 			}
 		}
 
-		return nil, fmt.Errorf("port group %q not found", portGroupName)
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].Name < result[j].Name
+		})
+
+		return result, nil
 	}
 
-	netRef := targetNet.Reference()
+	return nil, fmt.Errorf("port group %q not found", portGroupName)
+}
+
+// fetchNetworkVMs retrieves VMs connected to a network reference.
+func fetchNetworkVMs(ctx context.Context, client *govmomi.Client, netRef types.ManagedObjectReference, portGroupName string) ([]SwitchVMInfo, error) {
 	pc := client.PropertyCollector()
 	var nets []mo.Network
-	if err := pc.Retrieve(ctx, []types.ManagedObjectReference{netRef}, []string{"Name", "Vm"}, &nets); err != nil {
+	if err := pc.Retrieve(ctx, []types.ManagedObjectReference{netRef}, []string{"name", "Vm"}, &nets); err != nil {
 		return nil, fmt.Errorf("retrieve network properties: %w", err)
 	}
 
 	if len(nets) == 0 {
-		return result, nil
+		return nil, nil
 	}
 
+	var result []SwitchVMInfo
 	for _, net := range nets {
 		for _, vmRef := range net.Vm {
 			var moVM mo.VirtualMachine
