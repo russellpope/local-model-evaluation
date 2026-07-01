@@ -11,10 +11,10 @@ import (
 )
 
 type VMInfo struct {
-	Name     string
-	VCPU     int32
-	RAMGB    float64
-	Storage  string
+	Name    string
+	VCPU    int32
+	RAMGB   float64
+	Storage string
 }
 
 func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
@@ -32,11 +32,24 @@ func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
 
 	var result []VMInfo
 	for _, vm := range vms {
+		var vcpu int32
+		var ram float64
+		var storage string
+
+		if vm.Config != nil && vm.Config.Hardware != nil {
+			vcpu = vm.Config.Hardware.NumCPU
+			ram = utils.FormatRAM(vm.Config.Hardware.MemoryMB)
+		}
+
+		if vm.Summary != nil && vm.Summary.Storage != nil {
+			storage = utils.FormatBytes(int64(vm.Summary.Storage.Committed))
+		}
+
 		result = append(result, VMInfo{
 			Name:    vm.Name,
-			VCPU:    vm.Config.Hardware.NumCPU,
-			RAMGB:   utils.FormatRAM(vm.Config.Hardware.MemoryMB),
-			Storage: utils.FormatBytes(int64(vm.Summary.Storage.Committed)),
+			VCPU:    vcpu,
+			RAMGB:   ram,
+			Storage: storage,
 		})
 	}
 

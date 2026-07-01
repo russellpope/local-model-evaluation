@@ -8,30 +8,67 @@ import (
 )
 
 func TestResolvePrecedence(t *testing.T) {
-	v := viper.New()
-	
-	// Default
-	v.SetDefault("url", "http://default")
-	v.SetDefault("timeout", "60s")
-	
-	// Config file simulation
-	v.Set("url", "http://file")
-	
-	// Env var
-	os.Setenv("VSPHERE_URL", "http://env")
-	defer os.Unsetenv("VSPHERE_URL")
-	v.SetEnvPrefix("VSPHERE")
-	v.AutomaticEnv()
-	
-	// Flag (manually set in viper)
-	v.Set("url", "http://flag")
-	
-	cfg, err := Resolve(v)
-	if err != nil {
-		t.Fatalf("Resolve failed: %v", err)
+	tests := []struct {
+		name     string
+		setup    func(*viper.Viper)
+		expected string
+	}{
+		{
+			name: "Default",
+			setup: func(v *viper.Viper) {
+				v.SetDefault("url", "http://default")
+				v.SetDefault("timeout", "60s")
+			},
+			expected: "http://default",
+		},
+		{
+			name: "ConfigFileOverridesDefault",
+			setup: func(v *viper.Viper) {
+				v.SetDefault("url", "http://default")
+				v.SetDefault("timeout", "60s")
+				v.Set("url", "http://file")
+			},
+			expected: "http://file",
+		},
+		{
+			name: "EnvVarOverridesConfigFile",
+			setup: func(v *viper.Viper) {
+				v.SetDefault("url", "http://default")
+				v.SetDefault("timeout", "60s")
+				v.Set("url", "http://file")
+				os.Setenv("VSPHERE_URL", "http://env")
+				v.SetEnvPrefix("VSPHERE")
+				v.AutomaticEnv()
+			},
+			expected: "http://env",
+		},
+		{
+			name: "FlagOverridesEnvVar",
+			setup: func(v *viper.Viper) {
+				v.SetDefault("url", "http://default")
+				v.SetDefault("timeout", "60s")
+				v.Set("url", "http://file")
+				os.Setenv("VSPHERE_URL", "http://env")
+				v.SetEnvPrefix("VSPHERE")
+				v.AutomaticEnv()
+				v.Set("url", "http://flag")
+			},
+			expected: "http://flag",
+		},
 	}
-	
-	if cfg.URL != "http://flag" {
-		t.Errorf("expected flag to override, got %s", cfg.URL)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Clearenv()
+			v := viper.New()
+			tt.setup(v)
+			cfg, err := Resolve(v)
+			if err != nil {
+				t.Fatalf("Resolve failed: %v", err)
+			}
+			if cfg.URL != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, cfg.URL)
+			}
+		})
 	}
 }

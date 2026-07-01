@@ -24,29 +24,22 @@ type SwitchInfo struct {
 func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error) {
 	var result []SwitchInfo
 
-	dvsView, err := getNetworkView(ctx, client)
+	netView, err := getNetworkView(ctx, client)
 	if err != nil {
 		return nil, err
 	}
-	defer dvsView.Destroy(ctx)
+	defer netView.Destroy(ctx)
 
 	var dvsList []mo.DistributedVirtualSwitch
-	err = dvsView.Retrieve(ctx, []string{"DistributedVirtualSwitch"}, []string{"name", "summary"}, &dvsList)
+	err = netView.Retrieve(ctx, []string{"DistributedVirtualSwitch"}, []string{"name", "config.teamingPolicy"}, &dvsList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve DVS: %w", err)
 	}
 
-	for _, dvs := range dvsList {
-		result = append(result, SwitchInfo{
-			Switch:     dvs.Name,
-			SwitchType: "distributed",
-			Portgroup:  "N/A",
-			VLAN:       "N/A",
-			Uplinks:    "N/A",
-			LACP:       "unknown",
-			Ports:      0,
-			Used:       0,
-		})
+	var dvpgList []mo.DistributedVirtualPortgroup
+	err = netView.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name", "config.distributedVirtualSwitch", "config.defaultPortgroupVlan", "summary"}, &dvpgList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve DVPGs: %w", err)
 	}
 
 	hostView, err := getHostView(ctx, client)
@@ -61,24 +54,89 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 		return nil, fmt.Errorf("failed to retrieve hosts: %w", err)
 	}
 
-	for _, host := range hosts {
-		result = append(result, SwitchInfo{
-			Switch:     fmt.Sprintf("%s: vSwitch0", host.Name),
-			SwitchType: "standard",
-			Portgroup:  "N/A",
-			VLAN:       "N/A",
-			Uplinks:    "N/A",
-			LACP:       "N/A",
-			Ports:      0,
-			Used:       0,
-		})
-	}
+	result = processSwitches(dvsList, dvpgList, hosts)
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Switch < result[j].Switch
+		if result[i].Switch != result[j].Switch {
+			return result[i].Switch < result[j].Switch
+		}
+		return result[i].Portgroup < result[j].Portgroup
 	})
 
 	return result, nil
+}
+
+func processSwitches(dvsList []mo.DistributedVirtualSwitch, dvpgList []mo.DistributedVirtualPortgroup, hosts []mo.HostSystem) []SwitchInfo {
+	var result []SwitchInfo
+
+	dvsMap := make(map[string]mo.DistributedVirtualSwitch)
+	for _, dvs := range dvsList {
+		dvsMap[dvs.Reference().Value] = dvs
+	}
+
+	for _, dvpg := range dvpgList {
+		dvsRef := dvpg.Config.DistributedVirtualSwitch.Value
+		dvs, ok := dvsMap[dvsRef]
+		switchName := "Unknown"
+		lacp := "N/A"
+		if ok {
+			switchName = dvs.Name
+			if dvs.Config.TeamingPolicy != nil && dvs.Config.TeamingPolicy.LoadBalancing == "loadBalanceLACP" {
+				lacp = "Enabled"
+			} else {
+				lacp = "Disabled"
+			}
+		}
+
+		vlan := "N/A"
+		if dvpg.Config.DefaultPortgroupVlan != nil {
+			vlan = fmt.Sprintf("%d", dvpg.Config.DefaultPortgroupVlan.VlanId)
+		}
+
+		totalPorts := int32(0)
+		usedPorts := int32(0)
+		if dvpg.Summary != nil {
+			totalPorts = int32(dvpg.Summary.NumPorts)
+			usedPorts = int32(dvpg.Summary.NumPorts) - int32(dvpg.Summary.EffectiveNumPorts)
+		}
+
+		result = append(result, SwitchInfo{
+			Switch:     switchName,
+			SwitchType: "distributed",
+			Portgroup:  dvpg.Name,
+			VLAN:       vlan,
+			Uplinks:    "N/A",
+			LACP:       lacp,
+			Ports:      totalPorts,
+			Used:       usedPorts,
+		})
+	}
+
+	for _, host := range hosts {
+		if host.Config == nil || host.Config.Network == nil {
+			continue
+		}
+		for _, vsw := range host.Config.Network.vSwitch {
+			for _, pg := range vsw.Portgroup {
+				vlan := "N/A"
+				if pg.VlanId != nil {
+					vlan = fmt.Sprintf("%d", *pg.VlanId)
+				}
+
+				result = append(result, SwitchInfo{
+					Switch:     vsw.Name,
+					SwitchType: "standard",
+					Portgroup:  pg.Name,
+					VLAN:       vlan,
+					Uplinks:    "N/A",
+					LACP:       "N/A",
+					Ports:      0,
+					Used:       0,
+				})
+			}
+		}
+	}
+	return result
 }
 
 func GetVMsInPortgroup(ctx context.Context, client *vim25.Client, pgName string) ([]string, error) {
@@ -115,12 +173,19 @@ func GetVMsInPortgroup(ctx context.Context, client *vim25.Client, pgName string)
 		return nil, err
 	}
 
+	return processVMsInPortgroup(vms, pgKey, pgName), nil
+}
+
+func processVMsInPortgroup(vms []mo.VirtualMachine, pgKey string, pgName string) []string {
 	var result []string
 	for _, vm := range vms {
+		if vm.Config == nil || vm.Config.Hardware == nil {
+			continue
+		}
 		for _, dev := range vm.Config.Hardware.Device {
 			if netDev, ok := dev.(*types.VirtualEthernetCard); ok {
 				if b, ok := netDev.Backing.(*types.VirtualEthernetCardDistributedVirtualPortBackingInfo); ok {
-					if pgKey != "" && b.Port.PortgroupKey == pgKey {
+					if pgKey != "" && b.Port != nil && b.Port.PortgroupKey == pgKey {
 						result = append(result, vm.Name)
 						break
 					}
@@ -134,6 +199,5 @@ func GetVMsInPortgroup(ctx context.Context, client *vim25.Client, pgName string)
 			}
 		}
 	}
-
-	return result, nil
+	return result
 }

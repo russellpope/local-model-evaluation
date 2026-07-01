@@ -26,6 +26,7 @@ var datastoresCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer client.Logout(ctx)
 
 		dstores, err := inventory.GetDatastores(ctx, client.Client)
 		if err != nil {

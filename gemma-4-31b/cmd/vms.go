@@ -26,7 +26,7 @@ var vmsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// In a real app, we'd logout. For this CLI, it's fine.
+		defer client.Logout(ctx)
 
 		vms, err := inventory.GetVMs(ctx, client.Client)
 		if err != nil {

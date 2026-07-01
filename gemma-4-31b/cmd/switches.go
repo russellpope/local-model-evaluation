@@ -28,6 +28,7 @@ var switchesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		defer client.Logout(ctx)
 
 		if pgName != "" {
 			vms, err := inventory.GetVMsInPortgroup(ctx, client.Client, pgName)
