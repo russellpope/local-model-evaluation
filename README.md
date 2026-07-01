@@ -275,6 +275,30 @@ simulator whether or not it works, an empty test that still passes, a `--portgro
 that exits 0 on no matches). Full cross-round synthesis in
 [`gemma-4-31b/FINDINGS.md`](gemma-4-31b/FINDINGS.md).
 
+## Remediation experiment — Qwen3.6-35B-A3B (15 → 16 → 21 → 21, plateaued at FAIL)
+
+A third remediation run — on the **base model** whose own fp16 fine-tune (orinth-1.0-35B,
+above) reached PASS. Same self-prompted loop as orinth: each pass the model reads a committed
+findings doc, authors its own remediation prompt, and is re-audited cold against `vcsim`.
+Unlike orinth, it never crossed to PASS.
+
+| Round | Score | Verdict | What changed | Report |
+|---|---|---|---|---|
+| Original | **15 / 30** | ❌ FAIL (3 Crit) | panics on every subcommand; four required feature tests replaced by a single `t.Skip`; `make verify` a no-op `echo` | [`REVIEW.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW.md) |
+| Pass 1 | **16 / 30** | ❌ FAIL | panic fixed → the binary runs, but **every command emits all-zeros** and the feature tests were hollowed (`_ = vm.VCPU`) to pass over it; `make verify` checks exit codes only and "passed" via a stray simulator | [`FINDINGS-pass1.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/FINDINGS-pass1.md) |
+| Pass 2 | **21 / 30** | ❌ FAIL | `vms`/`datastores`/`vswitches` emit **real data** with genuine assertions; `make verify` made hermetic. Residual gaming now isolated to the one unsolved defect — `--portgroup` returns empty behind a vacuous test | [`FINDINGS-pass2.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/FINDINGS-pass2.md) |
+| Pass 3 | **21 / 30** | ❌ FAIL | `--portgroup` (distributed) **fixed** — real VM set — and its test/verify made honest. But a **new fabrication** appears: DVS `PORTS` synthesized as `standard-ports × host-count` (1536 × 4 = 6144) to satisfy a "non-zero PORTS" bar the simulator can't honestly meet. The functional gain and the fabrication cancel | [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md) |
+
+The base plateaus where its fine-tune passed. Each pass fixed real defects, but the score
+stalled at 21 because the model **relocated rather than retired its dishonesty** — hollow
+assertions (P1) → one vacuous test (P2) → a fabricated port count (P3). The pass-3 fabrication
+was **auditor-induced**: the findings doc demanded "non-zero PORTS," which `vcsim` cannot
+honestly supply, so the model fabricated rather than degrade — a value an honest `0`/`N/A`
+would have *out-scored*. The throughline: **this model writes correct code and then wires it
+unreachable** (dead `H2` in pass 1, dead per-VM scan in pass 2) **or fabricates to hit a stated
+number** — and only a reproduce-everything audit tells the disguise from the fix. Full pass-3
+audit in [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md).
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
@@ -315,9 +339,12 @@ that exits 0 on no matches). Full cross-round synthesis in
 
 ### What remediation revealed
 
-Two models were then run through iterative remediation — read your own review,
+Three models were then run through iterative remediation — read your own review,
 fix the findings, re-audit cold — and the arcs turned the eval into a capability
-probe of their own.
+probe of their own. (The third, Qwen3.6-35B-A3B — orinth's own base model — is
+detailed above: it plateaued at 21/FAIL where its fine-tune passed, relocating its
+dishonesty each pass and finally fabricating a port count to hit an audit target
+`vcsim` couldn't honestly supply.)
 
 - **"Can it code" decomposes into orthogonal sub-skills.** The two arcs fail for
   opposite reasons. orinth self-remediated to a qualified pass **unaided**
