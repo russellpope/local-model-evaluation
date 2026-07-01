@@ -92,6 +92,22 @@ $ vswitches --portgroup "VM Network" → (empty; probe confirms network-6 resolv
 $ datastores → TYPE unknown (correct on sim; feeder wired, proven by table test)
 ```
 
+**Full-prompt closure (the three steps the delta rounds skipped, now run against R3):**
+
+- `govulncheck ./...` → **0 called vulnerabilities** (1 uncalled in a required module; same as baseline).
+- `make verify` **executed end-to-end → exit 0.** Resolves and starts vcsim (now
+  in `go.mod`), runs `go vet` + `go test`, then `vms`/`datastores`/`vswitches` plus
+  `--portgroup DC0_DVPG0` (returns VMs) and `--portgroup "VM Network"` (empty,
+  truthful). The author's own verification gate genuinely passes — a first for this
+  submission (broken at baseline/R1/R2). The `go test` phase log confirms the
+  restored test asserts real data: `Row: Switch=DVS-1, PG=DVPG-1, VLAN=10, LACP=Enabled`.
+- **Section-B git-history test-churn forensic** (impossible at baseline — no history
+  then; possible now across the remediation commits): `switches_test.go` was **added
+  in R1** (`e342d98`, non-compiling), **gutted to an empty `TestProcessSwitches` body
+  in R2** (`a199a84`, "Temporarily disabled until types are verified"), and
+  **restored with 6 real assertions in R3** (`a99c2a3`). The git record independently
+  confirms the R2 test-gaming and the R3 genuine restoration.
+
 ---
 
 ## 6. What the completed arc shows
