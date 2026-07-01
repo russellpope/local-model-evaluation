@@ -3,44 +3,79 @@ package inventory
 import (
 	"testing"
 
-	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
 func TestClassifyTransport(t *testing.T) {
 	tests := []struct {
 		name     string
-		info     interface{}
+		desc     TransportDescriptor
 		expected string
 	}{
 		{
-			name:     "NFS",
-			info:     &types.NfsDatastoreInfo{},
+			name: "NFS (Info)",
+			desc: TransportDescriptor{
+				Info: &types.NasDatastoreInfo{},
+			},
 			expected: "NFS",
 		},
 		{
-			name:     "VMFS",
-			info:     &types.VmfsDatastoreInfo{},
-			expected: "VMFS",
+			name: "NFS (Summary)",
+			desc: TransportDescriptor{
+				SummaryType: "NFS",
+			},
+			expected: "NFS",
 		},
 		{
-			name:     "Unknown",
-			info:     nil,
+			name: "NFS41 (Summary)",
+			desc: TransportDescriptor{
+				SummaryType: "NFS41",
+			},
+			expected: "NFS",
+		},
+		{
+			name: "FC (Adapter)",
+			desc: TransportDescriptor{
+				Info:        &types.VmfsDatastoreInfo{},
+				AdapterInfo: "vmw_fc",
+			},
+			expected: "FC",
+		},
+		{
+			name: "iSCSI (Adapter)",
+			desc: TransportDescriptor{
+				Info:        &types.VmfsDatastoreInfo{},
+				AdapterInfo: "vmw_iscsi",
+			},
+			expected: "iSCSI",
+		},
+		{
+			name: "NVMe (Adapter)",
+			desc: TransportDescriptor{
+				Info:        &types.VmfsDatastoreInfo{},
+				AdapterInfo: "vmw_nvme",
+			},
+			expected: "NVMe",
+		},
+		{
+			name: "VMFS Unknown (No Adapter)",
+			desc: TransportDescriptor{
+				Info: &types.VmfsDatastoreInfo{},
+			},
 			expected: "unknown",
 		},
 		{
-			name:     "Other",
-			info:     &types.VirtualDisk{},
-			expected: "VMFS",
+			name: "Unknown",
+			desc: TransportDescriptor{
+				Info: nil,
+			},
+			expected: "unknown",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ds := mo.Datastore{
-				Info: tt.info,
-			}
-			if got := classifyTransport(ds); got != tt.expected {
+			if got := classifyTransport(tt.desc); got != tt.expected {
 				t.Errorf("classifyTransport() = %v, want %v", got, tt.expected)
 			}
 		})

@@ -2,8 +2,10 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -26,7 +28,13 @@ func TestResolvePrecedence(t *testing.T) {
 			setup: func(v *viper.Viper) {
 				v.SetDefault("url", "http://default")
 				v.SetDefault("timeout", "60s")
-				v.Set("url", "http://file")
+
+				tmpFile := filepath.Join(t.TempDir(), "config.yaml")
+				os.WriteFile(tmpFile, []byte("url: http://file"), 0644)
+				v.SetConfigFile(tmpFile)
+				if err := v.ReadInConfig(); err != nil {
+					t.Fatalf("failed to read config: %v", err)
+				}
 			},
 			expected: "http://file",
 		},
@@ -35,7 +43,12 @@ func TestResolvePrecedence(t *testing.T) {
 			setup: func(v *viper.Viper) {
 				v.SetDefault("url", "http://default")
 				v.SetDefault("timeout", "60s")
-				v.Set("url", "http://file")
+
+				tmpFile := filepath.Join(t.TempDir(), "config.yaml")
+				os.WriteFile(tmpFile, []byte("url: http://file"), 0644)
+				v.SetConfigFile(tmpFile)
+				v.ReadInConfig()
+
 				os.Setenv("VSPHERE_URL", "http://env")
 				v.SetEnvPrefix("VSPHERE")
 				v.AutomaticEnv()
@@ -47,11 +60,20 @@ func TestResolvePrecedence(t *testing.T) {
 			setup: func(v *viper.Viper) {
 				v.SetDefault("url", "http://default")
 				v.SetDefault("timeout", "60s")
-				v.Set("url", "http://file")
+
+				tmpFile := filepath.Join(t.TempDir(), "config.yaml")
+				os.WriteFile(tmpFile, []byte("url: http://file"), 0644)
+				v.SetConfigFile(tmpFile)
+				v.ReadInConfig()
+
 				os.Setenv("VSPHERE_URL", "http://env")
 				v.SetEnvPrefix("VSPHERE")
 				v.AutomaticEnv()
-				v.Set("url", "http://flag")
+
+				fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+				fs.String("url", "", "URL")
+				fs.Parse([]string{"--url", "http://flag"})
+				v.BindPFlag("url", fs.Lookup("url"))
 			},
 			expected: "http://flag",
 		},

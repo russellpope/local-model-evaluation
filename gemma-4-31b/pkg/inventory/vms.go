@@ -36,12 +36,12 @@ func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
 		var ram float64
 		var storage string
 
-		if vm.Config != nil && vm.Config.Hardware != nil {
+		if vm.Config != nil {
 			vcpu = vm.Config.Hardware.NumCPU
 			ram = utils.FormatRAM(vm.Config.Hardware.MemoryMB)
 		}
 
-		if vm.Summary != nil && vm.Summary.Storage != nil {
+		if vm.Summary.Storage != nil {
 			storage = utils.FormatBytes(int64(vm.Summary.Storage.Committed))
 		}
 

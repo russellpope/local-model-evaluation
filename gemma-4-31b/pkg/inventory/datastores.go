@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 	"govmomi-cli/pkg/inventory/utils"
 )
 
@@ -17,6 +19,12 @@ type DatastoreInfo struct {
 	Available string
 }
 
+type TransportDescriptor struct {
+	SummaryType string
+	Info        interface{}
+	AdapterInfo string
+}
+
 func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, error) {
 	view, err := getDatastoreView(ctx, client)
 	if err != nil {
@@ -25,7 +33,7 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 	defer view.Destroy(ctx)
 
 	var dstores []mo.Datastore
-	err = view.Retrieve(ctx, []string{"Datastore"}, []string{"name", "summary.capacity", "summary.freeSpace", "info"}, &dstores)
+	err = view.Retrieve(ctx, []string{"Datastore"}, []string{"name", "summary.capacity", "summary.freeSpace", "summary.type", "info"}, &dstores)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve datastore properties: %w", err)
 	}
@@ -36,9 +44,14 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 		free := int64(ds.Summary.FreeSpace)
 		used := capacity - free
 
+		desc := TransportDescriptor{
+			SummaryType: ds.Summary.Type,
+			Info:        ds.Info,
+		}
+
 		result = append(result, DatastoreInfo{
 			Name:      ds.Name,
-			Type:      classifyTransport(ds),
+			Type:      classifyTransport(desc),
 			Used:      utils.FormatBytes(used),
 			Available: utils.FormatBytes(free),
 		})
@@ -51,24 +64,34 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 	return result, nil
 }
 
-func classifyTransport(ds mo.Datastore) string {
-	if ds.Info == nil {
-		return "unknown"
-	}
-
-	switch b := ds.Info.(type) {
-	case *types.VirtualDisk:
-		return "VMFS"
-	case *types.NfsDatastoreInfo:
-		return "NFS"
-	case *types.VmfsDatastoreInfo:
-		// VMFS can be FC, iSCSI, or NVMe. We check the backing.
-		if ds.Summary != nil && ds.Summary.Capabilities != nil {
-			// In a real scenario, we'd look deeper into the host's storage adapter
-			// But for DatastoreInfo, we can check common indicators.
+func classifyTransport(desc TransportDescriptor) string {
+	if desc.Info != nil {
+		switch desc.Info.(type) {
+		case *types.NasDatastoreInfo:
+			return "NFS"
+		case *types.VmfsDatastoreInfo:
+			if desc.AdapterInfo != "" {
+				return classifyAdapter(desc.AdapterInfo)
+			}
+			return "unknown"
 		}
-		return "VMFS"
 	}
+	if desc.SummaryType == "NFS" || desc.SummaryType == "NFS41" {
+		return "NFS"
+	}
+	return "unknown"
+}
 
+func classifyAdapter(adapterInfo string) string {
+	lower := strings.ToLower(adapterInfo)
+	if strings.Contains(lower, "fc") || strings.Contains(lower, "fibre channel") {
+		return "FC"
+	}
+	if strings.Contains(lower, "iscsi") {
+		return "iSCSI"
+	}
+	if strings.Contains(lower, "nvme") {
+		return "NVMe"
+	}
 	return "unknown"
 }
