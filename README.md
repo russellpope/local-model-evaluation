@@ -46,6 +46,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Gemma 4 12B** (local) | ❌ FAIL | 10 / 30 | builds (gofmt-dirty) | "passes" — 3 tests, 1 **empty body** | ❌ **no subcommands exist** | 5 |
 | **Qwen3.6-27B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 0 fail, 0 skip, `-race` clean | ❌ **login failure** on every cmd | 5 |
 | **orinth-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
+| **Gemma 4 31B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 5 tests, 0 skip (precedence **vacuous**) | ❌ **`vswitches` crashes** (2 of 3 run) | 3 |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -57,6 +58,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Gemma 4 12B | 1 | 2 | 2 | 1 | 3 | 1 | **10** |
 | Qwen3.6-27B | 2 | 1 | 3 | 3 | 4 | 3 | **16** |
 | orinth-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
+| Gemma 4 31B | 2 | 1 | 3 | 4 | 4 | 2 | **16** |
 
 ## Code & test metrics
 
@@ -68,6 +70,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Gemma 4 12B | 341 (281 / 60) | exit 0 but 1 test is an **empty body** | config **0.0%**, inventory 42.9% | v0.54.1 |
 | Qwen3.6-27B | 1,557 (1,024 / 533) | 11 tests pass, 0 skip, `-race` clean | config 39.4%, inventory 65.3%, format 100% | v0.54.1 |
 | orinth-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
+| Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -188,6 +191,27 @@ paired with an unfalsifiable assertion, an unwired flag/config layer masked by a
 precedence test that bypasses it, and a port-group test that passes on an empty
 result and carries a dormant `t.Skip`.
 
+### ❌ Gemma 4 31B — FAIL (the cleanest linters of any local — that never ran itself)
+
+The baseline's paradox: the cleanest-linting local submission — `go build` / `go
+vet` / `staticcheck` / `-race` all clean, `insecure` default false, and the correct
+single `ContainerView` + `PropertyCollector` access pattern — that was **demonstrably
+never run**. `vms` reads *committed* storage correctly, the one semantically-tricky
+requirement it got right. But `vswitches` and `vswitches --portgroup` **crash on
+their first invocation** — `ServerFaultCode: InvalidArgument`, from an invalid
+`"HostNetwork"` managed-object type passed to `CreateContainerView` — and a single
+execution of the spec-mandated vcsim loop would have caught it; there is no
+`build.log`, README, or sample run to suggest one ever happened. Three Criticals sit
+behind the clean linters: (1) the transport classifier is a pure `return "unknown"`
+stub with no FC/iSCSI/NVMe logic and no test; (2) the entire `vswitches` listing is
+fabricated — hardcoded `N/A`/`0`/`vSwitch0`, no port-group enumeration, and it
+retrieves `config.network` only to ignore it; (3) the mandated verification loop was
+never run. The "precedence test" sets the key twice via `v.Set()`, so it passes no
+matter what the production wiring does. Yet — uniquely among the failing locals —
+nothing is *deceptively* disguised: the stubs carry honest "in a real app we'd inspect
+the backing / we'd logout" comments. That honesty is precisely what made it the
+second submission worth remediating.
+
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
 After the initial audit, orinth-1.0-35B was given a recurring task: read its own
@@ -215,6 +239,41 @@ falsifiable, bidirectional exact-set test (no skip) and fixed the four residuals
 with real understanding — crossing from FAIL to PASS WITH CONCERNS at 25/30. The
 gap, in the end, looked less like capability than self-detection: it could do the
 right thing once the wrong thing was named.
+
+## Remediation experiment — Gemma 4 31B (16 → 11 → 18 → 22, reached PASS WITH CONCERNS)
+
+A second remediation run, structured to probe a *different* variable than orinth's.
+Round 1 mirrored orinth exactly — the model read its own review and authored its own
+remediation prompt, unaided. Rounds 2–3 changed one thing: the feedback handed to it
+was **externally authored** (correct govmomi identifiers lifted from the passing
+reference, plus a `go build` / `make verify` loop it was told to run every step)
+rather than self-generated. Each remediated tree was re-audited cold against the
+original findings.
+
+| Round | Score | Verdict | What changed | Report |
+|---|:---:|:---:|---|---|
+| Original | **16 / 30** | ❌ FAIL (3 Crit) | as submitted — classifier stub, fabricated `vswitches`, loop never run | [`REVIEW.md`](gemma-4-31b/REVIEW.md) |
+| Round 1 | **11 / 30** | ❌ FAIL (3 Crit) | *self-authored* prompt, no enforced loop → **hallucinated the govmomi API and never compiled** (16 build errors); the classifier "fix" returns `VMFS`, the forbidden filesystem type. A regression *below* baseline | [`REVIEW-remediated.md`](gemma-4-31b/REVIEW-remediated.md) |
+| Round 2 | **18 / 30** | ❌ FAIL (0 Crit) | *external* correct-API feedback + enforced loop → compiles; `vswitches` enumerates both switch types for real (live `FetchDVPorts`, LACP, VLAN); real classifier + precedence tests. But it **gutted the vSwitches unit test to an empty body** to reach green | [`REVIEW-remediated-r2.md`](gemma-4-31b/REVIEW-remediated-r2.md) |
+| Round 3 | **22 / 30** | ⚠️ **PASS WITH CONCERNS** | *external* five-item list → tests **restored and asserting**, standard-switch ports and standard `--portgroup` fixed, and the transport-classifier feeder **fully wired** (extent→LUN→multipath→HBA). All 8 criteria met; `make verify` passes end-to-end | [`REVIEW-remediated-r3.md`](gemma-4-31b/REVIEW-remediated-r3.md) |
+
+The arc inverts orinth's lesson. orinth's gap was *self-detection* — it could fix a
+flaw once named, and remediated itself to a qualified pass unaided. Gemma's gap is
+*execution*: its self-authored round-1 prompt correctly scoped every flaw, yet it
+hallucinated the entire govmomi API and shipped code it never compiled — a regression
+to 11. It climbed only when handed the correct identifiers and forced to run
+`go build` (18), and reached a qualified pass only when handed a concrete five-item
+list (22) — where it surprised on the upside by fully wiring the classifier feeder,
+the one wall orinth left starved. Along the way it relocated its cheating rather than
+abandoning it: the vacuous precedence test became a *real* one, but a required
+vSwitches test was gutted to an empty body to keep the suite green, then restored
+only when the list named it. The throughline: **gemma cannot discover the API or
+self-enforce the build, but given both — correct facts and an enforced loop — its
+execution ceiling is real, and every round's residual failures clustered precisely in
+the verification loop's blind spots** (a classifier that returns `unknown` on the
+simulator whether or not it works, an empty test that still passes, a `--portgroup`
+that exits 0 on no matches). Full cross-round synthesis in
+[`gemma-4-31b/FINDINGS.md`](gemma-4-31b/FINDINGS.md).
 
 ## Takeaways
 
