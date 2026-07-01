@@ -18,6 +18,13 @@ func Classify(diskDevice string) string {
 		return classifyVMHBADevice(diskDevice)
 	case startsWith(deviceUpper, "EUI:"):
 		return "NVMe"
+	// Also handle dot-delimited govmomi canonical names
+	case startsWith(deviceUpper, "NAA."):
+		return classifyNAADevice(diskDevice)
+	case startsWith(deviceUpper, "T10."):
+		return classifyT10Device(diskDevice)
+	case startsWith(deviceUpper, "EUI."):
+		return "NVMe"
 	default:
 		return "unknown"
 	}
@@ -46,8 +53,13 @@ func startsWith(s, prefix string) bool {
 func classifyNAADevice(diskDevice string) string {
 	deviceUpper := deviceDiskName(diskDevice)
 
-	// NAA identifiers with EUI prefix indicate NVMe
-	if len(deviceUpper) >= 7 && deviceUpper[:7] == "NAA:EUI:" {
+	// NAA identifiers with EUI prefix indicate NVMe (colon-delimited: NAA:EUI:...)
+	if len(deviceUpper) >= 8 && deviceUpper[:8] == "NAA:EUI:" {
+		return "NVMe"
+	}
+
+	// NAA identifiers with EUI prefix indicate NVMe (dot-delimited: NAA.EUI...)
+	if len(deviceUpper) >= 7 && deviceUpper[:7] == "NAA.EUI" {
 		return "NVMe"
 	}
 

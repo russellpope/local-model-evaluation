@@ -57,8 +57,8 @@ func TestFormatBytesRounded(t *testing.T) {
 }
 
 func TestUsedEqualsCapacityMinusAvailable(t *testing.T) {
-	capacity := int64(107374182400)  // 100 GiB
-	freeSpace := int64(53687091200)  // 50 GiB
+	capacity := int64(107374182400) // 100 GiB
+	freeSpace := int64(53687091200) // 50 GiB
 	used := capacity - freeSpace
 
 	if used != 53687091200 {

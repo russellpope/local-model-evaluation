@@ -21,6 +21,7 @@ type SwitchInfo struct {
 	PortGroups []PortGroupInfo
 	TotalPorts int32
 	Available  int32
+	UsedPorts  int32
 	LACP       string // "enabled", "disabled", or "N/A" (standard switches)
 	Uplinks    []string
 }
@@ -42,14 +43,12 @@ type SwitchVMInfo struct {
 func ListSwitches(ctx context.Context, client *govmomi.Client) ([]SwitchInfo, error) {
 	var result []SwitchInfo
 
-	// List standard switches from hosts
 	stdSwitches, err := listStandardSwitches(ctx, client)
 	if err != nil {
 		return nil, fmt.Errorf("list standard switches: %w", err)
 	}
 	result = append(result, stdSwitches...)
 
-	// List distributed switches
 	distSwitches, err := listDistributedSwitches(ctx, client)
 	if err != nil {
 		return nil, fmt.Errorf("list distributed switches: %w", err)
@@ -76,33 +75,38 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 	for _, dc := range datacenters {
 		folders, err := dc.Folders(ctx)
 		if err != nil {
-			continue // skip datacenters we can't access
+			continue
 		}
 
 		if folders.HostFolder == nil {
 			continue
 		}
 
-		hosts, err := folders.HostFolder.Children(ctx)
+		// Use finder to list all host systems under this datacenter
+		hostFinder := find.NewFinder(client.Client, false)
+		hostFinder.SetDatacenter(dc)
+		allHosts, err := hostFinder.HostSystemList(ctx, "*")
 		if err != nil {
-			continue // skip hosts we can't reach
+			continue
 		}
 
 		var hostRefs []types.ManagedObjectReference
-		for _, h := range hosts {
-			if h.Reference().Type == "HostSystem" {
-				hostRefs = append(hostRefs, h.Reference())
-			}
+		for _, h := range allHosts {
+			hostRefs = append(hostRefs, h.Reference())
 		}
 
 		if len(hostRefs) == 0 {
 			continue
 		}
 
+		// Retrieve vSwitch info including port counts
 		var hostMo []mo.HostSystem
 		pc := client.PropertyCollector()
-		if err := pc.Retrieve(ctx, hostRefs, []string{"Config.Network.Vswitch", "Config.Network.Portgroup"}, &hostMo); err != nil {
-			continue // skip hosts with errors
+		if err := pc.Retrieve(ctx, hostRefs, []string{
+			"config.network.vswitch",
+			"config.network.portgroup",
+		}, &hostMo); err != nil {
+			continue
 		}
 
 		for _, h := range hostMo {
@@ -113,10 +117,12 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 			netInfo := h.Config.Network
 
 			for _, vsw := range netInfo.Vswitch {
-				var uplinks []string
-				for _, pnic := range vsw.Pnic {
-					uplinks = append(uplinks, pnic)
-				}
+				uplinks := append([]string(nil), vsw.Pnic...)
+
+				// Get port counts from HostVirtualSwitch
+				totalPorts := vsw.NumPorts
+				available := vsw.NumPortsAvailable
+				usedPorts := totalPorts - available
 
 				var portGroups []PortGroupInfo
 				for _, pg := range netInfo.Portgroup {
@@ -135,6 +141,9 @@ func listStandardSwitches(ctx context.Context, client *govmomi.Client) ([]Switch
 					SwitchName: vsw.Name,
 					SwitchType: "standard",
 					PortGroups: portGroups,
+					TotalPorts: totalPorts,
+					Available:  available,
+					UsedPorts:  usedPorts,
 					LACP:       "N/A",
 					Uplinks:    uplinks,
 				})
@@ -167,14 +176,19 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 	}
 
 	var dvsList []mo.DistributedVirtualSwitch
-	if err := pc.Retrieve(ctx, dvsRefs, []string{"Name", "Summary.NumPorts"}, &dvsList); err != nil {
+	if err := pc.Retrieve(ctx, dvsRefs, []string{
+		"Name",
+		"Summary.NumPorts",
+		"Config",
+		"Portgroup",
+	}, &dvsList); err != nil {
 		return nil, fmt.Errorf("retrieve distributed switch properties: %w", err)
 	}
 
 	var result []SwitchInfo
 	for _, dvs := range dvsList {
 		totalPorts := int32(0)
-		if dvs.Summary.Name != "" {
+		if dvs.Summary.NumPorts != 0 {
 			totalPorts = dvs.Summary.NumPorts
 		}
 
@@ -187,16 +201,6 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 					var pgMo mo.DistributedVirtualPortgroup
 					if err := pc.RetrieveOne(ctx, upRef, []string{"Name"}, &pgMo); err == nil {
 						uplinks = append(uplinks, pgMo.Name)
-					}
-				}
-
-				if config.LinkAgreementPolicy != nil {
-					if config.LinkAgreementPolicy.Policy == "loadbalance_srcdstmac" || 
-					   config.LinkAgreementPolicy.Policy == "loadbalance_srcport" ||
-					   config.LinkAgreementPolicy.Policy == "loadbalance_dstport" {
-						lacpEnabled = "enabled"
-					} else if config.LinkAgreementPolicy.Policy == "none" {
-						lacpEnabled = "disabled"
 					}
 				}
 
@@ -215,12 +219,9 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 					if pgMo.Config.DefaultPortConfig != nil {
 						portSetting := pgMo.Config.DefaultPortConfig.GetDVPortSetting()
 						if portSetting != nil && portSetting.VendorSpecificConfig != nil {
-							vs := portSetting.VendorSpecificConfig
-							if vs != nil && len(vs.KeyValue) > 0 {
-								for _, entry := range vs.KeyValue {
-									if strings.Contains(entry.Key, "vlan") || strings.Contains(entry.Key, "Vlan") {
-										pgInfo.VLAN = entry.OpaqueData
-									}
+							for _, entry := range portSetting.VendorSpecificConfig.KeyValue {
+								if strings.Contains(entry.Key, "vlan") || strings.Contains(entry.Key, "Vlan") {
+									pgInfo.VLAN = entry.OpaqueData
 								}
 							}
 						}
@@ -262,39 +263,141 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName string) ([]SwitchVMInfo, error) {
 	var result []SwitchVMInfo
 
-	rootFolder := client.Client.ServiceContent.RootFolder
-
-	var folder mo.Folder
-	pc := client.PropertyCollector()
-	if err := pc.RetrieveOne(ctx, rootFolder, []string{"ChildEntity"}, &folder); err != nil {
-		return nil, fmt.Errorf("retrieve root folder: %w", err)
-	}
-
-	var netRefs []types.ManagedObjectReference
-	for _, child := range folder.ChildEntity {
-		if child.Type == "Network" || child.Type == "DistributedVirtualPortgroup" {
-			netRefs = append(netRefs, child)
-		}
+	finder := find.NewFinder(client.Client, false)
+	datacenters, err := finder.DatacenterList(ctx, "*")
+	if err != nil {
+		return nil, fmt.Errorf("list datacenters: %w", err)
 	}
 
 	var targetNet object.Reference
-	for _, netRef := range netRefs {
-		var netMo mo.Network
-		if err := pc.RetrieveOne(ctx, netRef, []string{"Name"}, &netMo); err != nil {
+	for _, dc := range datacenters {
+		folders, err := dc.Folders(ctx)
+		if err != nil {
 			continue
 		}
-		if strings.EqualFold(netMo.Name, portGroupName) {
-			targetNet = object.NewNetwork(client.Client, netRef)
+
+		if folders.NetworkFolder == nil {
+			continue
+		}
+
+		// Search in the datacenter's network folder
+		nets, err := folders.NetworkFolder.Children(ctx)
+		if err != nil {
+			continue
+		}
+
+		for _, net := range nets {
+			if net.Reference().Type == "Network" || net.Reference().Type == "DistributedVirtualPortgroup" {
+				var netMo mo.Network
+				pc := client.PropertyCollector()
+				if err := pc.RetrieveOne(ctx, net.Reference(), []string{"Name"}, &netMo); err != nil {
+					continue
+				}
+				if strings.EqualFold(netMo.Name, portGroupName) {
+					targetNet = object.NewNetwork(client.Client, net.Reference())
+					break
+				}
+			}
+		}
+
+		if targetNet != nil {
 			break
 		}
 	}
 
 	if targetNet == nil {
+		// Also search root folder for distributed port groups that might be there
+		rootFolder := client.Client.ServiceContent.RootFolder
+		var folder mo.Folder
+		pc := client.PropertyCollector()
+		if err := pc.RetrieveOne(ctx, rootFolder, []string{"ChildEntity"}, &folder); err == nil {
+			for _, child := range folder.ChildEntity {
+				if child.Type == "DistributedVirtualPortgroup" {
+					var netMo mo.Network
+					if err := pc.RetrieveOne(ctx, child, []string{"Name"}, &netMo); err == nil {
+						if strings.EqualFold(netMo.Name, portGroupName) {
+							targetNet = child
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if targetNet == nil {
+		// For standard port groups, they may not be in the network folder
+		// but listed in the host's network config.
+		// Try to find the port group in host network configs.
+		for _, dc := range datacenters {
+			hostFinder := find.NewFinder(client.Client, false)
+			hostFinder.SetDatacenter(dc)
+			hosts, err := hostFinder.HostSystemList(ctx, "*")
+			if err != nil {
+				continue
+			}
+
+			for _, h := range hosts {
+				var hostMo mo.HostSystem
+				pc := client.PropertyCollector()
+				if err := pc.RetrieveOne(ctx, h.Reference(), []string{"config.network.portgroup"}, &hostMo); err != nil {
+					continue
+				}
+
+				if hostMo.Config != nil && hostMo.Config.Network != nil {
+					for _, pg := range hostMo.Config.Network.Portgroup {
+						if strings.EqualFold(pg.Spec.Name, portGroupName) {
+							// Found the port group. For standard port groups,
+							// we need to find VMs by checking their network connections.
+							// Use the VM's Network field to find connected VMs.
+							vmFinder := find.NewFinder(client.Client, false)
+							vmFinder.SetDatacenter(dc)
+							vmList, err := vmFinder.VirtualMachineList(ctx, "*")
+							if err != nil {
+								continue
+							}
+
+							for _, vm := range vmList {
+								var moVM mo.VirtualMachine
+								if err := pc.RetrieveOne(ctx, vm.Reference(), []string{"Name", "Network"}, &moVM); err != nil {
+									continue
+								}
+
+								// Check if any of the VM's networks match the port group
+								// We need to resolve the network name for each network reference
+								for _, netRef := range moVM.Network {
+									var netMo mo.Network
+									if err := pc.RetrieveOne(ctx, netRef, []string{"Name"}, &netMo); err != nil {
+										continue
+									}
+									if strings.EqualFold(netMo.Name, portGroupName) {
+										result = append(result, SwitchVMInfo{
+											Name:      moVM.Name,
+											Moref:     vm.Reference().Value,
+											PortGroup: portGroupName,
+										})
+										break
+									}
+								}
+							}
+
+							sort.Slice(result, func(i, j int) bool {
+								return result[i].Name < result[j].Name
+							})
+
+							return result, nil
+						}
+					}
+				}
+			}
+		}
+
 		return nil, fmt.Errorf("port group %q not found", portGroupName)
 	}
 
-	var nets []mo.Network
 	netRef := targetNet.Reference()
+	pc := client.PropertyCollector()
+	var nets []mo.Network
 	if err := pc.Retrieve(ctx, []types.ManagedObjectReference{netRef}, []string{"Name", "Vm"}, &nets); err != nil {
 		return nil, fmt.Errorf("retrieve network properties: %w", err)
 	}
@@ -323,95 +426,4 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 	})
 
 	return result, nil
-}
-
-// parseDiskDeviceClassify maps a disk name string to its transport type.
-func parseDiskDeviceClassify(diskName string) string {
-	if diskName == "" {
-		return "unknown"
-	}
-
-	diskUpper := strings.ToUpper(diskName)
-
-	switch {
-	case strings.HasPrefix(diskUpper, "NAA:"):
-		return classifyNAADevice(diskName)
-	case strings.HasPrefix(diskUpper, "T10:"):
-		return classifyT10Device(diskName)
-	case strings.HasPrefix(diskUpper, "VMHBA"):
-		return classifyVMHBADevice(diskName)
-	case strings.HasPrefix(diskUpper, "EUI:"):
-		return "NVMe"
-	default:
-		return "unknown"
-	}
-}
-
-func classifyNAADevice(diskName string) string {
-	diskUpper := strings.ToUpper(diskName)
-
-	if strings.HasPrefix(diskUpper, "NAA:EUI") {
-		return "NVMe"
-	}
-
-	if strings.Contains(diskUpper, "IP:") || strings.Contains(diskUpper, "IQN:") {
-		return "iSCSI"
-	}
-
-	return "FC"
-}
-
-func classifyT10Device(diskName string) string {
-	diskUpper := strings.ToUpper(diskName)
-
-	if strings.Contains(diskUpper, "NVME") || strings.Contains(diskUpper, "NVM-E") {
-		return "NVMe"
-	}
-
-	if strings.Contains(diskUpper, "ISCSI") || strings.Contains(diskUpper, "IQN:") {
-		return "iSCSI"
-	}
-
-	if strings.Contains(diskUpper, "FC") || strings.Contains(diskUpper, "WWN:") {
-		return "FC"
-	}
-
-	return "unknown"
-}
-
-func classifyVMHBADevice(diskName string) string {
-	diskUpper := strings.ToUpper(diskName)
-
-	if strings.Contains(diskUpper, "NVME") {
-		return "NVMe"
-	}
-
-	if strings.Contains(diskUpper, "ISCSI") {
-		return "iSCSI"
-	}
-
-	if strings.Contains(diskUpper, "FC") || strings.Contains(diskUpper, "VMHBA") {
-		return "FC"
-	}
-
-	return "unknown"
-}
-
-// extractDiskDeviceFromBacking extracts disk device info from a VM's disk backing.
-func extractDiskDeviceFromBacking(backing types.BaseVirtualDeviceBackingInfo) string {
-	if backing == nil {
-		return ""
-	}
-
-	switch b := backing.(type) {
-	case *types.VirtualDiskFlatVer2BackingInfo:
-		return b.FileName
-	case *types.VirtualDiskRawDiskVer2BackingInfo:
-		if b.DeviceName != "" {
-			return b.DeviceName
-		}
-		return b.DescriptorFileName
-	default:
-		return ""
-	}
 }

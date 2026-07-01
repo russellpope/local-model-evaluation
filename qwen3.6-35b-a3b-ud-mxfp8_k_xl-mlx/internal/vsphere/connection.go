@@ -34,11 +34,5 @@ func Connect(ctx context.Context, c *config.Config) (*govmomi.Client, error) {
 		return nil, fmt.Errorf("create vSphere client: %w", err)
 	}
 
-	if userinfo != nil {
-		if err := client.Login(ctx, userinfo); err != nil {
-			return nil, fmt.Errorf("authenticate to vCenter at %s: %w", c.URL, err)
-		}
-	}
-
 	return client, nil
 }

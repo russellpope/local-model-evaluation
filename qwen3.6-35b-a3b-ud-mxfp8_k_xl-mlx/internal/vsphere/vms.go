@@ -34,60 +34,68 @@ func ListVMs(ctx context.Context, client *govmomi.Client) ([]VMInfo, error) {
 		return nil, fmt.Errorf("no datacenters found")
 	}
 
-	finder.SetDatacenter(datacenters[0])
+	var allVMs []VMInfo
 
-	vms, err := finder.VirtualMachineList(ctx, "*")
-	if err != nil {
-		return nil, fmt.Errorf("list VMs: %w", err)
-	}
+	for _, dc := range datacenters {
+		finder.SetDatacenter(dc)
 
-	if len(vms) == 0 {
-		return nil, nil
-	}
-
-	var vmRefs []types.ManagedObjectReference
-	for _, vm := range vms {
-		vmRefs = append(vmRefs, vm.Reference())
-	}
-
-	pc := client.PropertyCollector()
-
-	var moVMs []mo.VirtualMachine
-	if err := pc.Retrieve(ctx, vmRefs, []string{"Name", "Config.Hardware.NumCPU", "Config.Hardware.MemoryMB", "Summary.Storage.Committed"}, &moVMs); err != nil {
-		return nil, fmt.Errorf("retrieve VM properties: %w", err)
-	}
-
-	var result []VMInfo
-	for _, vm := range moVMs {
-		committed := int64(0)
-
-		if vm.Summary.Storage != nil && vm.Summary.Storage.Committed != 0 {
-			committed = vm.Summary.Storage.Committed
+		vms, err := finder.VirtualMachineList(ctx, "*")
+		if err != nil {
+			continue
 		}
 
-		numCPU := int32(0)
-		if vm.Config != nil {
-			numCPU = vm.Config.Hardware.NumCPU
+		if len(vms) == 0 {
+			continue
 		}
 
-		memMB := int32(0)
-		if vm.Config != nil {
-			memMB = vm.Config.Hardware.MemoryMB
+		var vmRefs []types.ManagedObjectReference
+		for _, vm := range vms {
+			vmRefs = append(vmRefs, vm.Reference())
 		}
 
-		memGB := float64(memMB) / 1024.0
+		pc := client.PropertyCollector()
 
-		result = append(result, VMInfo{
-			Name:    vm.Name,
-			VCPU:    numCPU,
-			RAMGB:   memGB,
-			Storage: formatter.FormatBytes(committed),
-		})
+		var moVMs []mo.VirtualMachine
+		if err := pc.Retrieve(ctx, vmRefs, []string{"config.name", "Config.Hardware.NumCPU", "Config.Hardware.MemoryMB", "Summary.Storage.Committed"}, &moVMs); err != nil {
+			continue
+		}
+
+		for _, vm := range moVMs {
+			committed := int64(0)
+
+			if vm.Summary.Storage != nil && vm.Summary.Storage.Committed != 0 {
+				committed = vm.Summary.Storage.Committed
+			}
+
+			name := vm.Name
+			if name == "" && vm.Config != nil {
+				name = vm.Config.Name
+			}
+
+			numCPU := int32(0)
+			if vm.Config != nil {
+				numCPU = vm.Config.Hardware.NumCPU
+			}
+
+			memMB := int32(0)
+			if vm.Config != nil {
+				memMB = vm.Config.Hardware.MemoryMB
+			}
+
+			memGB := float64(memMB) / 1024.0
+
+			allVMs = append(allVMs, VMInfo{
+				Name:    name,
+				VCPU:    numCPU,
+				RAMGB:   memGB,
+				Storage: formatter.FormatBytes(committed),
+			})
+		}
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name < result[j].Name
+	sort.Slice(allVMs, func(i, j int) bool {
+		return allVMs[i].Name < allVMs[j].Name
 	})
 
-	return result, nil
+	return allVMs, nil
 }

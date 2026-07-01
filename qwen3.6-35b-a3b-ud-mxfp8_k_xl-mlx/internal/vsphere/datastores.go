@@ -7,6 +7,7 @@ import (
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 
@@ -35,11 +36,17 @@ func ListDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInf
 		return nil, fmt.Errorf("no datacenters found")
 	}
 
-	finder.SetDatacenter(datacenters[0])
+	var allDS []*object.Datastore
 
-	allDS, err := finder.DatastoreList(ctx, "*")
-	if err != nil {
-		return nil, fmt.Errorf("find datastores: %w", err)
+	for _, dc := range datacenters {
+		finder.SetDatacenter(dc)
+
+		ds, err := finder.DatastoreList(ctx, "*")
+		if err != nil {
+			continue
+		}
+
+		allDS = append(allDS, ds...)
 	}
 
 	if len(allDS) == 0 {
@@ -54,17 +61,12 @@ func ListDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInf
 	pc := client.PropertyCollector()
 
 	var datastores []mo.Datastore
-	if err := pc.Retrieve(ctx, dsRefs, []string{"Name", "Summary"}, &datastores); err != nil {
+	if err := pc.Retrieve(ctx, dsRefs, []string{"name", "Summary", "Info"}, &datastores); err != nil {
 		return nil, fmt.Errorf("retrieve datastore properties: %w", err)
 	}
 
-	var dsBacking []mo.Datastore
-	if err := pc.Retrieve(ctx, dsRefs, []string{"Info"}, &dsBacking); err != nil {
-		return nil, fmt.Errorf("retrieve datastore backing info: %w", err)
-	}
-
 	var result []DatastoreInfo
-	for i, ds := range datastores {
+	for _, ds := range datastores {
 		capacity := int64(0)
 		freeSpace := int64(0)
 
@@ -76,7 +78,7 @@ func ListDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInf
 			used = 0
 		}
 
-		dsType := classifyTransport(dsBacking, i)
+		dsType := classifyTransport(ds)
 
 		result = append(result, DatastoreInfo{
 			Name:      ds.Name,
@@ -94,19 +96,19 @@ func ListDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInf
 }
 
 // classifyTransport determines the storage transport type from a datastore's backing info.
-func classifyTransport(dsBacking []mo.Datastore, index int) string {
-	if len(dsBacking) <= index || dsBacking[index].Info == nil {
+func classifyTransport(ds mo.Datastore) string {
+	if ds.Info == nil {
 		return "unknown"
 	}
 
-	switch info := dsBacking[index].Info.(type) {
+	switch info := ds.Info.(type) {
 	case *types.NasDatastoreInfo:
 		return "NFS"
 	case *types.VmfsDatastoreInfo:
 		if info.Vmfs != nil && len(info.Vmfs.Extent) > 0 {
 			for _, extent := range info.Vmfs.Extent {
-				if diskDevice := extractDiskDevice(extent.DiskName); diskDevice != "" {
-					return transport.Classify(diskDevice)
+				if extent.DiskName != "" {
+					return transport.Classify(extent.DiskName)
 				}
 			}
 		}
@@ -114,12 +116,4 @@ func classifyTransport(dsBacking []mo.Datastore, index int) string {
 	default:
 		return "unknown"
 	}
-}
-
-// extractDiskDevice extracts the disk device identifier from a VMFS extent's disk name.
-func extractDiskDevice(diskName string) string {
-	if diskName == "" {
-		return ""
-	}
-	return diskName
 }

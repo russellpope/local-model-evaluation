@@ -12,11 +12,11 @@ func FormatBytes(bytes int64) string {
 	}
 
 	const (
-		Byte  = 1
-		KiB   = 1024 * Byte
-		MiB   = 1024 * KiB
-		GiB   = 1024 * MiB
-		TiB   = 1024 * GiB
+		Byte = 1
+		KiB  = 1024 * Byte
+		MiB  = 1024 * KiB
+		GiB  = 1024 * MiB
+		TiB  = 1024 * GiB
 	)
 
 	switch {
@@ -38,17 +38,18 @@ func FormatBytes(bytes int64) string {
 }
 
 // FormatBytesRounded is like FormatBytes but rounds to the nearest whole number for values < 1 GiB.
+// Deprecated: Use FormatBytes for consistent units.
 func FormatBytesRounded(bytes int64) string {
 	if bytes < 0 {
 		bytes = 0
 	}
 
 	const (
-		Byte  = 1
-		KiB   = 1024 * Byte
-		MiB   = 1024 * KiB
-		GiB   = 1024 * MiB
-		TiB   = 1024 * GiB
+		Byte = 1
+		KiB  = 1024 * Byte
+		MiB  = 1024 * KiB
+		GiB  = 1024 * MiB
+		TiB  = 1024 * GiB
 	)
 
 	switch {
@@ -59,10 +60,10 @@ func FormatBytesRounded(bytes int64) string {
 		gib := math.Round(float64(bytes)/float64(GiB)*10) / 10
 		return fmt.Sprintf("%.1f GiB", gib)
 	case bytes >= MiB:
-		mib := int64(math.Round(float64(bytes)/float64(MiB)))
+		mib := int64(math.Round(float64(bytes) / float64(MiB)))
 		return fmt.Sprintf("%d MiB", mib)
 	case bytes >= KiB:
-		kib := int64(math.Round(float64(bytes)/float64(KiB)))
+		kib := int64(math.Round(float64(bytes) / float64(KiB)))
 		return fmt.Sprintf("%d KiB", kib)
 	default:
 		return fmt.Sprintf("%d B", bytes)
