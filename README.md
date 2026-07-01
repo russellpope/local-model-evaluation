@@ -280,10 +280,12 @@ that exits 0 on no matches). Full cross-round synthesis in
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
   compiled, passed its own tests, and panicked on every command; one passed a
   race-clean, zero-skip suite and couldn't log in to anything; one logged in and
-  ran all three subcommands but reported fabricated data and refused every flag.
-  Only the frontier model produced something that was both runnable *and*
-  correct.
-- **The audit caught test-gaming the unit suite hid.** All five local models
+  ran all three subcommands but reported fabricated data and refused every flag;
+  and one — with the cleanest linters of any local (`build`/`vet`/`staticcheck`/
+  `-race` all green) — crashed on its first `vswitches` invocation because its
+  author never actually ran it. Only the frontier model produced something that
+  was both runnable *and* correct.
+- **The audit caught test-gaming the unit suite hid.** All six local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
   reporting PASS for an unimplemented feature, a precedence test that bypasses
@@ -293,22 +295,59 @@ that exits 0 on no matches). Full cross-round synthesis in
   correctness from a passing-looking suite.
 - **Better local models produce better-disguised failures.** Scores rose with
   model capability (10 → 13 → 15 → 16 / 30) but verdicts didn't change — the
-  larger models' failures just took more forensics to expose. The two
-  highest-scoring locals tie at 16/30 from opposite directions: Qwen3.6-27B has
-  spotless linters and architecture but cannot log in at all, while orinth-1.0
-  actually runs end-to-end yet ships a fabricated `vswitches` column, a whole
-  category of switches silently dropped, and a completely dead flag interface.
-  Neither shortfall shows up in a static check or a green test run — only in
-  running the binary and reading the wiring.
+  larger models' failures just took more forensics to expose. Three locals tie at
+  16/30 from three different directions: Qwen3.6-27B has spotless linters and
+  architecture but cannot log in at all; orinth-1.0 runs end-to-end yet ships a
+  fabricated `vswitches` column, a whole category of switches silently dropped,
+  and a dead flag interface; Gemma-4-31B has the cleanest linters of the field but
+  crashes on first run and never executed its own verification loop. None of those
+  shortfalls shows up in a static check or a green test run — only in running the
+  binary and reading the wiring.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
   `unknown`/`N/A` for fields the simulator can't model — but only behind real
   logic. Opus, Qwen3.6-35B, and orinth-1.0 all had genuine, specific-protocol-
   tested classifiers; Qwen3-Coder shipped a constant; Qwen3.6-27B shipped a
-  *real* classifier kept as dead code (its unit test the only caller). orinth is
-  the subtlest variant of all: a real, reachable classifier whose **production
-  data feeder is hardstubbed to return nothing**, so the honest logic is starved
-  into always-`unknown` — passing its honest unit test while never classifying a
-  real datastore.
+  *real* classifier kept as dead code (its unit test the only caller); Gemma-4-31B
+  shipped an honest `return "unknown"` stub. orinth is the subtlest variant of
+  all: a real, reachable classifier whose **production data feeder is hardstubbed
+  to return nothing**, so the honest logic is starved into always-`unknown` —
+  passing its honest unit test while never classifying a real datastore.
+
+### What remediation revealed
+
+Two models were then run through iterative remediation — read your own review,
+fix the findings, re-audit cold — and the arcs turned the eval into a capability
+probe of their own.
+
+- **"Can it code" decomposes into orthogonal sub-skills.** The two arcs fail for
+  opposite reasons. orinth self-remediated to a qualified pass **unaided**
+  (16 → 20 → 22 → 25): its only gap was *self-detection* — it could fix any flaw
+  once named. Gemma exposed the *execution* gap instead — its self-authored prompt
+  scoped every flaw correctly, yet it hallucinated the entire govmomi API and
+  shipped code it never compiled (a regression to **11**), and climbed only when
+  handed the correct identifiers **and** forced to run `go build` every step
+  (16 → 11 → 18 → 22). Self-diagnosis, API knowledge, and build discipline are
+  separate axes; a model can be strong on one and empty on another.
+- **A passing reference + an enforced loop is what makes a failing local
+  improvable.** Every correct identifier fed to Gemma was lifted from Opus's
+  working tree, and every gain came behind a `go build`/`make verify` loop it was
+  told to run. Handed both, its execution ceiling was real — it even fully wired
+  the transport-classifier feeder, the one wall orinth left starved. Denied them
+  (round 1), it regressed below its own baseline.
+- **Test-gaming relocates under remediation pressure; it doesn't vanish.** As
+  Gemma's suite improved, the cheating *moved*: the vacuous precedence test became
+  a real one, but a required vSwitches test was gutted to an empty body to keep the
+  suite green — the deception migrating to the verification loop's lowest-scrutiny
+  blind spot — and was restored only when the feedback named it. The residual
+  failures each round clustered exactly where the loop is blind: a classifier that
+  reads `unknown` on the simulator whether or not it works, an empty test that
+  still passes, a `--portgroup` that exits 0 on no matches.
+- **~3 remediation rounds is the fair patience budget.** Both strong trajectories
+  reached the qualified-pass zone by round 3. Past that, the exercise stops
+  measuring the model and starts measuring a human's willingness to hand-hold — so
+  capping it keeps the signal clean. A model that needs three rounds of
+  increasingly specific external correction to reach 22/30 on a straightforward CLI
+  has told you what you needed to know.
 
 ## Repo layout
 
