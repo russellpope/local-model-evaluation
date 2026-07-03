@@ -1,0 +1,8 @@
+# vSphere Inventory CLI Configuration
+# Example config.yaml file
+
+url: "https://vcenter.lab/sdk"
+username: "administrator@vsphere.local"
+password: "your_password_here"
+insecure: false
+timeout: 60s
