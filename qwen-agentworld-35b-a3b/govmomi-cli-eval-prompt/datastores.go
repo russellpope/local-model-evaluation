@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -60,25 +61,84 @@ func getDatastoreTransportType(ds mo.Datastore) string {
 }
 
 func isNVMeDevice(device string) bool {
-	device = lower(device)
-	return containsAny(device, []string{"nvme", "nvmex", "ns0", "ns1", "ns2", "ns3"})
+	deviceLower := strings.ToLower(device)
+	return strings.Contains(deviceLower, "nvme") ||
+		strings.Contains(deviceLower, "nvmex") ||
+		strings.Contains(deviceLower, "ns0") ||
+		strings.Contains(deviceLower, "ns1") ||
+		strings.Contains(deviceLower, "ns2") ||
+		strings.Contains(deviceLower, "ns3")
 }
 
 func isISCSIDevice(device string) bool {
-	device = lower(device)
-	return containsAny(device, []string{"naa.", "iqn.", "eui.", "tpgt", "iscsi", "vmhba33", "vmhba34", "vmhba35", "vmhba36", "vmhba37", "vmhba38", "vmhba39", "vmhba40", "vmhba41", "vmhba42", "vmhba43", "vmhba44", "vmhba45", "vmhba46", "vmhba47", "vmhba48"})
+	deviceLower := strings.ToLower(device)
+	return strings.Contains(deviceLower, "naa.") ||
+		strings.Contains(deviceLower, "iqn.") ||
+		strings.Contains(deviceLower, "eui.") ||
+		strings.Contains(deviceLower, "tpgt") ||
+		strings.Contains(deviceLower, "iscsi") ||
+		strings.Contains(deviceLower, "vmhba33") ||
+		strings.Contains(deviceLower, "vmhba34") ||
+		strings.Contains(deviceLower, "vmhba35") ||
+		strings.Contains(deviceLower, "vmhba36") ||
+		strings.Contains(deviceLower, "vmhba37") ||
+		strings.Contains(deviceLower, "vmhba38") ||
+		strings.Contains(deviceLower, "vmhba39") ||
+		strings.Contains(deviceLower, "vmhba40") ||
+		strings.Contains(deviceLower, "vmhba41") ||
+		strings.Contains(deviceLower, "vmhba42") ||
+		strings.Contains(deviceLower, "vmhba43") ||
+		strings.Contains(deviceLower, "vmhba44") ||
+		strings.Contains(deviceLower, "vmhba45") ||
+		strings.Contains(deviceLower, "vmhba46") ||
+		strings.Contains(deviceLower, "vmhba47") ||
+		strings.Contains(deviceLower, "vmhba48")
 }
 
 func isFCDevice(device string) bool {
-	device = lower(device)
-	return containsAny(device, []string{"mpx.vmhba", "t10.", "fc", "vmhba0", "vmhba1", "vmhba2", "vmhba3", "vmhba4", "vmhba5", "vmhba6", "vmhba7", "vmhba8", "vmhba9", "vmhba10", "vmhba11", "vmhba12", "vmhba13", "vmhba14", "vmhba15", "vmhba16", "vmhba17", "vmhba18", "vmhba19", "vmhba20", "vmhba21", "vmhba22", "vmhba23", "vmhba24", "vmhba25", "vmhba26", "vmhba27", "vmhba28", "vmhba29", "vmhba30", "vmhba31", "vmhba32"})
+	deviceLower := strings.ToLower(device)
+	return strings.Contains(deviceLower, "mpx.vmhba") ||
+		strings.Contains(deviceLower, "t10.") ||
+		strings.Contains(deviceLower, "fc") ||
+		strings.HasPrefix(deviceLower, "vmhba0") ||
+		strings.HasPrefix(deviceLower, "vmhba1") ||
+		strings.HasPrefix(deviceLower, "vmhba2") ||
+		strings.HasPrefix(deviceLower, "vmhba3") ||
+		strings.HasPrefix(deviceLower, "vmhba4") ||
+		strings.HasPrefix(deviceLower, "vmhba5") ||
+		strings.HasPrefix(deviceLower, "vmhba6") ||
+		strings.HasPrefix(deviceLower, "vmhba7") ||
+		strings.HasPrefix(deviceLower, "vmhba8") ||
+		strings.HasPrefix(deviceLower, "vmhba9") ||
+		strings.HasPrefix(deviceLower, "vmhba10") ||
+		strings.HasPrefix(deviceLower, "vmhba11") ||
+		strings.HasPrefix(deviceLower, "vmhba12") ||
+		strings.HasPrefix(deviceLower, "vmhba13") ||
+		strings.HasPrefix(deviceLower, "vmhba14") ||
+		strings.HasPrefix(deviceLower, "vmhba15") ||
+		strings.HasPrefix(deviceLower, "vmhba16") ||
+		strings.HasPrefix(deviceLower, "vmhba17") ||
+		strings.HasPrefix(deviceLower, "vmhba18") ||
+		strings.HasPrefix(deviceLower, "vmhba19") ||
+		strings.HasPrefix(deviceLower, "vmhba20") ||
+		strings.HasPrefix(deviceLower, "vmhba21") ||
+		strings.HasPrefix(deviceLower, "vmhba22") ||
+		strings.HasPrefix(deviceLower, "vmhba23") ||
+		strings.HasPrefix(deviceLower, "vmhba24") ||
+		strings.HasPrefix(deviceLower, "vmhba25") ||
+		strings.HasPrefix(deviceLower, "vmhba26") ||
+		strings.HasPrefix(deviceLower, "vmhba27") ||
+		strings.HasPrefix(deviceLower, "vmhba28") ||
+		strings.HasPrefix(deviceLower, "vmhba29") ||
+		strings.HasPrefix(deviceLower, "vmhba30") ||
+		strings.HasPrefix(deviceLower, "vmhba31") ||
+		strings.HasPrefix(deviceLower, "vmhba32")
 }
 
 func classifyStorageFromDevice(device string) string {
 	if device == "" {
 		return "unknown"
 	}
-	device = lower(device)
 	if isNVMeDevice(device) {
 		return "NVMe"
 	}
@@ -91,39 +151,9 @@ func classifyStorageFromDevice(device string) string {
 	return "unknown"
 }
 
-func lower(s string) string {
-	sLower := ""
-	for _, c := range s {
-		if c >= 'A' && c <= 'Z' {
-			sLower += string(c + 32)
-		} else {
-			sLower += string(c)
-		}
-	}
-	return sLower
-}
-
-func containsAny(s string, subs []string) bool {
-	for _, sub := range subs {
-		if contains(s, sub) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 func getDatastores(ctx context.Context, client *govmomi.Client) ([]DatastoreInfo, error) {
 	folder := object.NewRootFolder(client.Client)
-	
+
 	dsViewManager := view.NewManager(client.Client)
 	v, err := dsViewManager.CreateContainerView(ctx, folder.Reference(), []string{"Datastore"}, true)
 	if err != nil {
@@ -196,7 +226,9 @@ var datastoresCmd = &cobra.Command{
 			Timeout:  viper.GetDuration("timeout"),
 		}
 
-		ctx := cmd.Context()
+		ctx, cancel := context.WithTimeout(cmd.Context(), cfg.Timeout)
+		defer cancel()
+
 		client, err := connect(ctx, cfg)
 		if err != nil {
 			return err

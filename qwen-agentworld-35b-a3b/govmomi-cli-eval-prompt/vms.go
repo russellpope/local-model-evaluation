@@ -22,7 +22,7 @@ type VMInfo struct {
 
 func getVMs(ctx context.Context, client *govmomi.Client) ([]VMInfo, error) {
 	folder := object.NewRootFolder(client.Client)
-	
+
 	vmViewManager := view.NewManager(client.Client)
 	v, err := vmViewManager.CreateContainerView(ctx, folder.Reference(), []string{"VirtualMachine"}, true)
 	if err != nil {
@@ -53,9 +53,6 @@ func getVMs(ctx context.Context, client *govmomi.Client) ([]VMInfo, error) {
 		committed := int64(0)
 		if vmMo.Summary.Storage != nil {
 			committed = vmMo.Summary.Storage.Committed
-			if committed == 0 && vmMo.Summary.Storage.Uncommitted > 0 {
-				committed = vmMo.Summary.Storage.Uncommitted
-			}
 		}
 		if committed > 0 {
 			storage = formatBytes(committed)
@@ -96,7 +93,9 @@ var vmsCmd = &cobra.Command{
 			Timeout:  viper.GetDuration("timeout"),
 		}
 
-		ctx := cmd.Context()
+		ctx, cancel := context.WithTimeout(cmd.Context(), cfg.Timeout)
+		defer cancel()
+
 		client, err := connect(ctx, cfg)
 		if err != nil {
 			return err

@@ -175,6 +175,9 @@ func TestVSwitchesSimulator(t *testing.T) {
 		if si.LACP != "" && !validLACP[si.LACP] {
 			t.Errorf("switch %s has invalid LACP: %s", si.SwitchName, si.LACP)
 		}
+		if si.UsedPorts < 0 {
+			t.Errorf("switch %s has negative used ports %d", si.SwitchName, si.UsedPorts)
+		}
 		if si.UsedPorts > si.Ports && si.Ports != 0 {
 			t.Errorf("switch %s has used ports %d > total ports %d", si.SwitchName, si.UsedPorts, si.Ports)
 		}
@@ -219,17 +222,33 @@ func TestPortGroupVMsSimulator(t *testing.T) {
 		t.Fatalf("expected at least 1 switch, got %d", len(switchInfos))
 	}
 
-	portGroupName := switchInfos[0].PortGroupName
-	if portGroupName == "" {
-		t.Fatalf("port group name is empty")
+	// Find a standard port group (not distributed)
+	var standardPortGroupName string
+	for _, si := range switchInfos {
+		if si.SwitchType == "standard" && si.PortGroupName != "" {
+			standardPortGroupName = si.PortGroupName
+			break
+		}
 	}
 
-	info, err := getVMsForPortGroup(ctx, client, portGroupName)
+	if standardPortGroupName == "" {
+		t.Fatalf("expected to find a standard port group, got none")
+	}
+
+	info, err := getVMsForPortGroup(ctx, client, standardPortGroupName)
 	if err != nil {
 		t.Fatalf("failed to get VMs for port group: %v", err)
 	}
 
+	// The getVMsForPortGroup function should return successfully
+	// VMs may or may not be attached to the specific port group depending on the simulator model
 	if len(info) == 0 {
-		t.Logf("No VMs found for port group %s (this may be expected depending on simulator model)", portGroupName)
+		t.Logf("No VMs found for port group %s (this is expected for some simulator configurations)", standardPortGroupName)
+	} else {
+		if len(info[0].VMs) == 0 {
+			t.Logf("Port group %s has no VMs attached", standardPortGroupName)
+		} else {
+			t.Logf("Found %d VMs for port group %s", len(info[0].VMs), standardPortGroupName)
+		}
 	}
 }

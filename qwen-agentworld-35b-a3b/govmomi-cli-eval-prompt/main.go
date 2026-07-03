@@ -24,9 +24,11 @@ type Config struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "govmomi-cli",
-	Short: "vSphere Inventory CLI",
-	Long:  "A command-line application that connects to a VMware vCenter Server and reports virtualization inventory.",
+	Use:           "govmomi-cli",
+	Short:         "vSphere Inventory CLI",
+	Long:          "A command-line application that connects to a VMware vCenter Server and reports virtualization inventory.",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func initConfig() error {
@@ -87,9 +89,6 @@ func connect(ctx context.Context, cfg Config) (*govmomi.Client, error) {
 
 	u.User = url.UserPassword(cfg.Username, cfg.Password)
 
-	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
 	client, err := govmomi.NewClient(ctx, u, cfg.Insecure)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to vCenter: %w", err)
@@ -108,5 +107,7 @@ func main() {
 	rootCmd.AddCommand(datastoresCmd)
 	rootCmd.AddCommand(vswitchesCmd)
 
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }

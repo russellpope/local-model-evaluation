@@ -19,27 +19,28 @@ verify: build vet test
 	@go run github.com/vmware/govmomi/vcsim -vm 4 -ds 2 -pg 2 > /tmp/vcsim.log 2>&1 & \
 		echo $$! > $(VCSIM_PID); \
 		sleep 3; \
-		if ! ps -p $$($(cat $(VCSIM_PID))) > /dev/null; then \
+		VCSIM_PID_VAL=$$(cat $(VCSIM_PID)); \
+		if ! ps -p $$VCSIM_PID_VAL > /dev/null 2>&1; then \
 			echo "vcsim failed to start"; \
 			cat /tmp/vcsim.log; \
 			exit 1; \
 		fi; \
-		echo "vcsim started with PID $$(cat $(VCSIM_PID))"; \
+		echo "vcsim started with PID $$VCSIM_PID_VAL"; \
 		export VSPHERE_URL=https://127.0.0.1:8989/sdk; \
 		export VSPHERE_USERNAME=user; \
 		export VSPHERE_PASSWORD=pass; \
 		export VSPHERE_INSECURE=true; \
 		echo "Running vms..."; \
-		./$(BINARY) vms || { echo "vms command failed"; vcsim-stop; exit 1; }; \
+		./$(BINARY) vms || { echo "vms command failed"; $(MAKE) vcsim-stop; exit 1; }; \
 		echo "Running datastores..."; \
-		./$(BINARY) datastores || { echo "datastores command failed"; vcsim-stop; exit 1; }; \
+		./$(BINARY) datastores || { echo "datastores command failed"; $(MAKE) vcsim-stop; exit 1; }; \
 		echo "Running vswitches..."; \
-		./$(BINARY) vswitches || { echo "vswitches command failed"; vcsim-stop; exit 1; }; \
-		PG_NAME=$$(./$(BINARY) vswitches | grep -v "SWITCH" | grep -v "------" | head -1 | awk '{print $3}'); \
+		./$(BINARY) vswitches || { echo "vswitches command failed"; $(MAKE) vcsim-stop; exit 1; }; \
+		PG_NAME=$$(./$(BINARY) vswitches | grep -v "SWITCH" | grep -v "------" | head -1 | awk '{print $$3}'); \
 		echo "Running vswitches --portgroup $$PG_NAME..."; \
-		./$(BINARY) vswitches --portgroup "$$PG_NAME" || { echo "vswitches --portgroup command failed"; vcsim-stop; exit 1; }; \
+		./$(BINARY) vswitches --portgroup "$$PG_NAME" || { echo "vswitches --portgroup command failed"; $(MAKE) vcsim-stop; exit 1; }; \
 		echo "All verifications passed!"; \
-		vcsim-stop
+		$(MAKE) vcsim-stop
 
 vcsim-stop:
 	@if [ -f $(VCSIM_PID) ]; then \
