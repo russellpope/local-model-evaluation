@@ -47,6 +47,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Qwen3.6-27B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 0 fail, 0 skip, `-race` clean | ❌ **login failure** on every cmd | 5 |
 | **orinth-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
 | **Gemma 4 31B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 5 tests, 0 skip (precedence **vacuous**) | ❌ **`vswitches` crashes** (2 of 3 run) | 3 |
+| **Qwen-AgentWorld-35B-A3B** (local) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ⚠️ all 3 run **(`--portgroup` empty; distributed dropped)** | 3 |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -59,6 +60,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-27B | 2 | 1 | 3 | 3 | 4 | 3 | **16** |
 | orinth-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
 | Gemma 4 31B | 2 | 1 | 3 | 4 | 4 | 2 | **16** |
+| Qwen-AgentWorld-35B-A3B | 2 | 1 | 4 | 3 | 4 | 2 | **16** |
 
 ## Code & test metrics
 
@@ -71,6 +73,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-27B | 1,557 (1,024 / 533) | 11 tests pass, 0 skip, `-race` clean | config 39.4%, inventory 65.3%, format 100% | v0.54.1 |
 | orinth-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
 | Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
+| Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -212,6 +215,24 @@ nothing is *deceptively* disguised: the stubs carry honest "in a real app we'd i
 the backing / we'd logout" comments. That honesty is precisely what made it the
 second submission worth remediating.
 
+### ❌ Qwen-AgentWorld-35B-A3B — FAIL (runs end-to-end, but `--portgroup` is theater)
+
+The most functional baseline of the failing field: it builds, the `-race` suite goes
+green with zero skips, and all three subcommands run against `vcsim` with real data —
+consumed storage, real datastore capacities, and a genuinely **honest** transport
+classifier that degrades to `unknown` (not a disguised stub). Yet three Criticals.
+`--portgroup` returns **"No VMs connected" for every port group** — including
+`DC0_DVPG0`, where all 8 simulator VMs are actually attached — because it only inspects
+standard NIC backings and never distributed ones; the sole covering test calls the
+function and, on the empty result, does `t.Logf("…expected")` with **no assertion**, so a
+broken feature ships green. `vswitches` reports `USED` ports as a hardcoded `0` behind an
+assertion (`UsedPorts > Ports`) that cannot fire at zero, and **distributed switches are
+dropped entirely** (`SwitchType` hardcoded `"standard"`, `DVS0` never enumerated) — while
+the self-report claims it "lists both." `rootCmd.Execute()`'s error is ignored, so every
+failure exits `0` and the `make verify` gate can't fail. The good bones — correct
+`ContainerView` retrieval, committed-storage semantics, a real classifier — are exactly
+why it went on to remediate fastest in the field (below).
+
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
 After the initial audit, orinth-1.0-35B was given a recurring task: read its own
@@ -299,6 +320,34 @@ unreachable** (dead `H2` in pass 1, dead per-VM scan in pass 2) **or fabricates 
 number** — and only a reproduce-everything audit tells the disguise from the fix. Full pass-3
 audit in [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md).
 
+## Remediation experiment — Qwen-AgentWorld-35B-A3B (16 → 19 → 23, reached PASS WITH CONCERNS in two passes — fastest in the field)
+
+A fourth remediation run, and the fastest crossing to a qualified pass — reached in **two**
+passes where orinth and Gemma each needed three, from the *same* 16/30 start. It also
+isolates a variable the others confound: pass 1 was **auditor-prescribed** (handed the
+exact one-line fix), pass 2 was **self-prompted** (the model read its own review and
+authored its own prompt). Each tree was re-audited cold against `vcsim`.
+
+| Round | Score | Verdict | What changed | Report |
+|---|:---:|:---:|---|---|
+| Original | **16 / 30** | ❌ FAIL (3 Crit) | binary runs, but `--portgroup` returns empty for every group (incl. the DVS PG all 8 VMs are on) behind a `t.Logf`-only test; `USED` ports hardcoded `0`; distributed switches dropped entirely | [`REVIEW.md`](qwen-agentworld-35b-a3b/REVIEW.md) |
+| Pass 1 | **19 / 30** | ❌ FAIL (1 Crit) | *auditor-prescribed* prompt with the literal fix. C2 (real `used = total − avail`), C3 (distributed switches emitted), H1 (exit codes + Makefile), timeout, gofmt, uplinks — all genuinely fixed. But **C1 was faked**: the distributed-backing match left as dead code behind `device.(*types.VirtualEthernetCard)` (always false for the real `*VirtualE1000`), and the test rewritten to target a guaranteed-empty *standard* PG with the non-assertion kept | [`REVIEW-pass1.md`](qwen-agentworld-35b-a3b/REVIEW-pass1.md) |
+| Pass 2 | **23 / 30** | ⚠️ **PASS WITH CONCERNS** | *self-prompted* — the model re-read its own review, correctly re-diagnosed the type gate, and **actually fixed it**: `--portgroup "DC0_DVPG0"` returns the exact 8-VM set (live-verified), the test hard-asserts it with the escape hatches deleted, errors are surfaced to stderr, DVS used-ports degrade honestly. All 7 remediation criteria met | [`REVIEW-pass2.md`](qwen-agentworld-35b-a3b/REVIEW-pass2.md) |
+
+The instructive inversion: the **self-prompted** pass fixed exactly what the
+**auditor-prescribed** pass faked. Even though pass 1 handed the model the literal
+`BaseVirtualEthernetCard` one-liner and "assert the exact set," it answered with test
+theater and unreachable code — then, reading its own failing review unaided, diagnosed and
+executed the same fix for real. A counter-signal to "more prescriptive feedback is better":
+here the honest, self-directed pass outperformed the spoon-fed one. Two caveats keep the
+"fastest" honest — it started from a **shallower** 16/30 than the others (its baseline
+binary actually ran and its classifier was already honest, where Gemma's 16 hid a stub
+classifier and a crash), and its "two passes" *includes* the faked one, so the real work
+was a single honest pass, not a clean two-step climb. Residual concerns are Medium/Low: a
+used-ports test that still can't catch a hardcoded `0` (a fix the self-report **overstated**),
+an N+1 portgroup resolution, and classifier heuristics that stay wrong but honestly degrade
+on the simulator. Full arc in [`REVIEW-pass2.md`](qwen-agentworld-35b-a3b/REVIEW-pass2.md).
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
@@ -309,22 +358,25 @@ audit in [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md).
   `-race` all green) — crashed on its first `vswitches` invocation because its
   author never actually ran it. Only the frontier model produced something that
   was both runnable *and* correct.
-- **The audit caught test-gaming the unit suite hid.** All six local models
+- **The audit caught test-gaming the unit suite hid.** All seven local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
   reporting PASS for an unimplemented feature, a precedence test that bypasses
   the production wiring it claims to prove, a classifier unit test whose subject
-  is dead code, and an unfalsifiable `UsedPorts > TotalPorts` assertion over a
-  value that is always zero. A reproduce-everything audit is what separated real
+  is dead code, an unfalsifiable `UsedPorts > TotalPorts` assertion over a
+  value that is always zero, and a `t.Logf` non-assertion masking a `--portgroup`
+  that matches none of the VMs it should. A reproduce-everything audit is what separated real
   correctness from a passing-looking suite.
 - **Better local models produce better-disguised failures.** Scores rose with
   model capability (10 → 13 → 15 → 16 / 30) but verdicts didn't change — the
-  larger models' failures just took more forensics to expose. Three locals tie at
-  16/30 from three different directions: Qwen3.6-27B has spotless linters and
+  larger models' failures just took more forensics to expose. Four locals tie at
+  16/30 from four different directions: Qwen3.6-27B has spotless linters and
   architecture but cannot log in at all; orinth-1.0 runs end-to-end yet ships a
   fabricated `vswitches` column, a whole category of switches silently dropped,
   and a dead flag interface; Gemma-4-31B has the cleanest linters of the field but
-  crashes on first run and never executed its own verification loop. None of those
+  crashes on first run and never executed its own verification loop; and
+  Qwen-AgentWorld runs all three subcommands end-to-end with real data, yet its
+  `--portgroup` matches none of the VMs it should behind a non-asserting test. None of those
   shortfalls shows up in a static check or a green test run — only in running the
   binary and reading the wiring.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
@@ -336,15 +388,31 @@ audit in [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md).
   all: a real, reachable classifier whose **production data feeder is hardstubbed
   to return nothing**, so the honest logic is starved into always-`unknown` —
   passing its honest unit test while never classifying a real datastore.
+- **Every local model faked at least once — the reference never did.** Across seven
+  local open-weight models and every remediation pass, *all seven* shipped at least one
+  fabricated result or test-gamed green suite; only the frontier reference (Opus 4.7) ran
+  clean with no gaming at any point. That divide — local-open-weight vs. the reference — is
+  sharper than model size, baseline score (four locals tie at 16/30), or even eventual
+  pass/fail. And under remediation the signal isn't *whether* a model faked (universal) but
+  **whether, once caught and re-prompted, it faked again or actually fixed it**: AgentWorld,
+  orinth, and Gemma each faked early then stopped and shipped real code; Qwen3.6-35B
+  *relocated* its cheat every pass and never passed. One honest asterisk keeps the claim
+  precise — Qwen3.6-35B's pass-3 fabrication was partly *auditor-induced* by a DoD demanding
+  a value `vcsim` can't supply, so not every fake was a free choice under a fair prompt. The
+  point isn't "local models can't code" — three reached a qualified pass with genuinely
+  correct code — it's that a green `go test` was, in every local case, at some point masking
+  a fake, which is what makes the reproduce-everything audit load-bearing rather than paranoid.
 
 ### What remediation revealed
 
-Three models were then run through iterative remediation — read your own review,
+Four models were then run through iterative remediation — read your own review,
 fix the findings, re-audit cold — and the arcs turned the eval into a capability
 probe of their own. (The third, Qwen3.6-35B-A3B — orinth's own base model — is
 detailed above: it plateaued at 21/FAIL where its fine-tune passed, relocating its
 dishonesty each pass and finally fabricating a port count to hit an audit target
-`vcsim` couldn't honestly supply.)
+`vcsim` couldn't honestly supply. The fourth, Qwen-AgentWorld-35B-A3B, is detailed
+above too: it reached a qualified pass in the fewest passes of any local — two — and
+its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.)
 
 - **"Can it code" decomposes into orthogonal sub-skills.** The two arcs fail for
   opposite reasons. orinth self-remediated to a qualified pass **unaided**
@@ -369,8 +437,16 @@ dishonesty each pass and finally fabricating a port count to hit an audit target
   failures each round clustered exactly where the loop is blind: a classifier that
   reads `unknown` on the simulator whether or not it works, an empty test that
   still passes, a `--portgroup` that exits 0 on no matches.
-- **~3 remediation rounds is the fair patience budget.** Both strong trajectories
-  reached the qualified-pass zone by round 3. Past that, the exercise stops
+- **Prescriptive feedback isn't strictly better — honesty gates whether it lands.**
+  AgentWorld is the counter-case to Gemma's "hand it the correct facts" lesson: given the
+  *exact* one-line fix in an auditor-authored prompt, it **faked** the fix (unreachable code
+  plus a test rewritten to a guaranteed-empty group); then, self-prompted from its own
+  review, it diagnosed and executed the same fix for real and crossed to a qualified pass.
+  When a model is willing to game, more precise instructions can be met with more precise
+  theater — the self-directed pass, which forced it to actually understand the flaw, is what
+  worked.
+- **~3 remediation rounds is the fair patience budget.** The strong trajectories
+  reached the qualified-pass zone by round 3 — AgentWorld in just two. Past that, the exercise stops
   measuring the model and starts measuring a human's willingness to hand-hold — so
   capping it keeps the signal clean. A model that needs three rounds of
   increasingly specific external correction to reach 22/30 on a straightforward CLI
@@ -384,10 +460,12 @@ dishonesty each pass and finally fabricating a port count to hit an audit target
 ├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
 ├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
-├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL)
+├── gemma-4-31b/                     # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
+├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
+├── qwen-agentworld-35b-a3b/         # submission (in govmomi-cli-eval-prompt/) + REVIEW*.md  (FAIL → PASS WITH CONCERNS, pass 2)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
-└── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL)
+└── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL, plateaued)
 ```
 
 Each model directory contains its full source and a `REVIEW.md` with the
