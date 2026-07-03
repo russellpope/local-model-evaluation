@@ -172,8 +172,13 @@ func getDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swit
 
 			vlanStr := "0"
 			// For DVS port groups, VLAN info is in the default port config
-			// The exact type depends on the portgroup type, so we skip complex type assertions
-			// and just use "0" as default for now
+			if dvsPortSetting, ok := pgMo.Config.DefaultPortConfig.(*types.VMwareDVSPortSetting); ok {
+				if dvsPortSetting.Vlan != nil {
+					if vlanIdSpec, ok := dvsPortSetting.Vlan.(*types.VmwareDistributedVirtualSwitchVlanIdSpec); ok {
+						vlanStr = strconv.Itoa(int(vlanIdSpec.VlanId))
+					}
+				}
+			}
 
 			// Get port counts for DVS
 			ports := int32(0)
@@ -183,8 +188,8 @@ func getDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swit
 					break
 				}
 			}
-			// For DVS, NumPortsAvailable is not in DVSSummary, so we use 0 for used ports
-			usedPorts := ports
+			// For DVS, NumPortsAvailable is not in DVSSummary, so we report 0 for used ports
+			usedPorts := int32(0)
 
 			switchInfos = append(switchInfos, SwitchInfo{
 				SwitchName:    dvsName,
@@ -326,17 +331,18 @@ func getVMsForPortGroup(ctx context.Context, client *govmomi.Client, portGroupNa
 	for _, vmMo := range vmsMo {
 		connected := false
 		for _, device := range vmMo.Config.Hardware.Device {
-			if nic, ok := device.(*types.VirtualEthernetCard); ok {
-				if nic.Backing != nil {
+			if nic, ok := device.(types.BaseVirtualEthernetCard); ok {
+				virtualNic := nic.GetVirtualEthernetCard()
+				if virtualNic.Backing != nil {
 					// Check standard network backing
-					if netBacking, ok := nic.Backing.(*types.VirtualEthernetCardNetworkBackingInfo); ok {
+					if netBacking, ok := virtualNic.Backing.(*types.VirtualEthernetCardNetworkBackingInfo); ok {
 						if netBacking.DeviceName == portGroupName {
 							connected = true
 							break
 						}
 					}
 					// Check distributed virtual port backing
-					if dvPortBacking, ok := nic.Backing.(*types.VirtualEthernetCardDistributedVirtualPortBackingInfo); ok {
+					if dvPortBacking, ok := virtualNic.Backing.(*types.VirtualEthernetCardDistributedVirtualPortBackingInfo); ok {
 						// Resolve the portgroup key
 						portgroupKey := dvPortBacking.Port.PortgroupKey
 						if portgroupKey != "" {

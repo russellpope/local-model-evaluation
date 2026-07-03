@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -37,9 +38,13 @@ func TestConfigPrecedence(t *testing.T) {
 	// Reset viper for each test
 	viper.Reset()
 
-	viper.SetDefault("timeout", 30*time.Second)
+	rootCmd := &cobra.Command{Use: "test"}
+	rootCmd.PersistentFlags().String("url", "", "vCenter URL or host")
+	rootCmd.PersistentFlags().String("username", "", "vCenter username")
+	rootCmd.PersistentFlags().String("password", "", "vCenter password")
+	rootCmd.PersistentFlags().Bool("insecure", false, "skip TLS verification")
+	rootCmd.PersistentFlags().Duration("timeout", 60*time.Second, "overall operation timeout")
 
-	// Set config file value
 	viper.SetConfigType("yaml")
 	viper.ReadConfig(strings.NewReader("timeout: 45s\nurl: https://config.url/sdk"))
 
@@ -47,11 +52,19 @@ func TestConfigPrecedence(t *testing.T) {
 	t.Setenv("VSPHERE_TIMEOUT", "90s")
 	t.Setenv("VSPHERE_URL", "https://env.url/sdk")
 
-	// Set flag value (simulate via viper set)
-	viper.Set("timeout", 120*time.Second)
-	viper.Set("url", "https://flag.url/sdk")
+	// Bind flags to viper
+	viper.BindPFlag("url", rootCmd.PersistentFlags().Lookup("url"))
+	viper.BindPFlag("username", rootCmd.PersistentFlags().Lookup("username"))
+	viper.BindPFlag("password", rootCmd.PersistentFlags().Lookup("password"))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
+	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
 
-	// Verify flag takes precedence
+	// Set flag value via pflag
+	rootCmd.PersistentFlags().Set("url", "https://flag.url/sdk")
+	rootCmd.PersistentFlags().Set("timeout", "120s")
+
+	// Verify flag takes precedence (flag > env > file)
+	viper.AutomaticEnv()
 	if viper.GetDuration("timeout") != 120*time.Second {
 		t.Errorf("Expected timeout 120s, got %v", viper.GetDuration("timeout"))
 	}

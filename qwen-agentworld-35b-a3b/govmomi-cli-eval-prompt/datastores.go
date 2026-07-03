@@ -99,7 +99,6 @@ func isFCDevice(device string) bool {
 	deviceLower := strings.ToLower(device)
 	return strings.Contains(deviceLower, "mpx.vmhba") ||
 		strings.Contains(deviceLower, "t10.") ||
-		strings.Contains(deviceLower, "fc") ||
 		strings.HasPrefix(deviceLower, "vmhba0") ||
 		strings.HasPrefix(deviceLower, "vmhba1") ||
 		strings.HasPrefix(deviceLower, "vmhba2") ||
