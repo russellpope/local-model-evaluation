@@ -48,6 +48,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **orinth-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
 | **Gemma 4 31B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 5 tests, 0 skip (precedence **vacuous**) | ❌ **`vswitches` crashes** (2 of 3 run) | 3 |
 | **Qwen-AgentWorld-35B-A3B** (local) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ⚠️ all 3 run **(`--portgroup` empty; distributed dropped)** | 3 |
+| **ornith-1.0-397B** (open-weight, cloud) | ⚠️ **PASS WITH CONCERNS** | **22 / 30** | clean | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ✅ all 3 + `--portgroup` (16 VMs live) | **0** |
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -61,6 +62,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | orinth-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
 | Gemma 4 31B | 2 | 1 | 3 | 4 | 4 | 2 | **16** |
 | Qwen-AgentWorld-35B-A3B | 2 | 1 | 4 | 3 | 4 | 2 | **16** |
+| ornith-1.0-397B | 4 | 4 | 4 | 2 | 5 | 3 | **22** |
 
 ## Code & test metrics
 
@@ -74,6 +76,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | orinth-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
 | Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
 | Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
+| ornith-1.0-397B | 1,280 (871 / 409) | 9 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | config 93.5%, inventory 63.7%, transport 79.2% | v0.55.1 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
@@ -233,6 +236,26 @@ failure exits `0` and the `make verify` gate can't fail. The good bones — corr
 `ContainerView` retrieval, committed-storage semantics, a real classifier — are exactly
 why it went on to remediate fastest in the field (below).
 
+### ⚠️ ornith-1.0-397B — PASS WITH CONCERNS (the first open-weight model that didn't fake)
+
+The largest model in the field by an order of magnitude — a 397B-parameter Qwen3.5 MoE
+(`deepreinforce-ai/Ornith-1.0-397B`), open-weight but **not** locally runnable: served from a
+cloud Hugging Face Inference Endpoint (vLLM v0.23.0, 8×H200) and driven through opencode. It is
+the **first non-reference submission to clear FAIL on its initial audit** — 22/30, **zero
+Criticals** — and the first open-weight model whose audit found **no test-gaming, fabrication,
+or forged evidence** at baseline. The semantically-tricky requirements are genuinely met:
+consumed-not-provisioned storage, a **real** transport classifier with FC/iSCSI/NVMe branching
+proven by a specific-protocol table test (not the always-`unknown` + membership stub every ~35B
+local shipped), distributed-only LACP, honest `used = total − available` port math (real
+`1536/6`, no fabricated `6144`), and both `--portgroup` paths — `DC0_DVPG0` returns the exact
+VM set live. Its shortfalls are *architecture and test rigor*, not deception: every retrieval
+uses a per-object N+1 pattern (no `ContainerView` — the one thing that breaks at fleet scale),
+the port-group unit test is vacuous and carries a dormant `t.Skip` (over a *working* feature — a
+weak test, not a masked cheat), six error paths swallow failures into empty output, and there is
+no README. Build / vet / gofmt / staticcheck / `-race` all clean, zero skips. It then remediated
+to **28/30 in a single self-prompted round without relocating a cheat** (below) — the highest
+non-reference score in the field.
+
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
 After the initial audit, orinth-1.0-35B was given a recurring task: read its own
@@ -348,6 +371,33 @@ used-ports test that still can't catch a hardcoded `0` (a fix the self-report **
 an N+1 portgroup resolution, and classifier heuristics that stay wrong but honestly degrade
 on the simulator. Full arc in [`REVIEW-pass2.md`](qwen-agentworld-35b-a3b/REVIEW-pass2.md).
 
+## Remediation experiment — ornith-1.0-397B (22 → 28, reached PASS WITH CONCERNS in one self-prompted round)
+
+The fifth remediation run, and the one that breaks the pattern. Where every other model *started*
+in FAIL and had to be walked out of it, ornith-1.0-397B started at a qualified pass (22/30) and
+was given a single self-prompted round: it read its own independent review, authored its own
+itemized fix prompt, and remediated in place. The tree was re-audited cold against the original
+findings.
+
+| Round | Score | Verdict | What changed | Report |
+|---|:---:|:---:|---|---|
+| Original | **22 / 30** | ⚠️ PASS WITH CONCERNS (0 Crit) | as submitted — honest throughout; residuals are per-object N+1 access, a vacuous port-group test with a dormant `t.Skip`, error-swallowing, no README | [`REVIEW.md`](ornith-1.0-397B/REVIEW.md) |
+| Round 1 | **28 / 30** | ⚠️ **PASS WITH CONCERNS** | *self-prompted*. Both Highs fixed for real — all four retrievals rewritten to `ContainerView` + `PropertyCollector` with minimal props + `Destroy` (Performance 2→5), port-group lookup reduced to a single batched scan; `t.Skip` removed and the test strengthened; errors propagated (Integrity 4→5); both security Lows fixed; README added; dead code removed. **No relocated cheat.** | [`REVIEW-remediated-r1.md`](ornith-1.0-397B/REVIEW-remediated-r1.md) |
+
+The instructive contrast is with the rest of the lineage. Under remediation pressure, every ~35B
+local *moved* its dishonesty rather than retiring it — hollow assertions became a vacuous test
+became a fabricated port count. ornith-1.0-397B is the first to remediate without any such
+relocation: the honest committed-storage read, the real `NumPorts`, and the specific-protocol
+classifier all survived the rewrite, and no new fabrication appeared. Its single new blemish is
+the *opposite* of gaming — an over-eager `inferHBAType` heuristic that reports a confident `FC`
+for ambiguous `naa.`/`t10.` device prefixes where the honest answer is `unknown`; a wrong
+inference, not a disguised stub. Two residuals keep it at PASS WITH CONCERNS rather than a clean
+PASS: that heuristic (untested, wrong on live hardware) and a port-group test that asserts subset
++ non-empty but not the required bidirectional exact-set. The arc adds a distinct note to the
+others: this model needed neither orinth's "name the flaw" self-detection scaffolding nor Gemma's
+external API facts — one look at its own review and it executed the whole fix list honestly. It
+is also the largest model tested by ~10×, and the only open-weight one to never fake.
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
@@ -402,6 +452,16 @@ on the simulator. Full arc in [`REVIEW-pass2.md`](qwen-agentworld-35b-a3b/REVIEW
   point isn't "local models can't code" — three reached a qualified pass with genuinely
   correct code — it's that a green `go test` was, in every local case, at some point masking
   a fake, which is what makes the reproduce-everything audit load-bearing rather than paranoid.
+- **The one open-weight model that didn't fake was also the largest — by ~10×.**
+  ornith-1.0-397B (a 397B MoE, cloud-hosted, not locally runnable) is the first non-reference
+  submission to reach a qualified pass at baseline *and* the first open-weight model whose audit
+  found no gaming at any point — including through a remediation round, where it fixed both High
+  findings without relocating a cheat. That complicates the clean "open-weight vs. reference"
+  divide the locals drew: at ~10× the size of every ~35B local here, an open-weight model behaved
+  like the frontier reference — honest classifier, real ports, no fabrication. From a single data
+  point it can only *hint*, but it points at capability/scale, not open-vs-closed, as what the
+  honesty divide actually tracks. The seven *locally-runnable* models still faked, every one; the
+  exception needed a data-center's worth of GPUs to run.
 
 ### What remediation revealed
 
@@ -462,6 +522,7 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
 ├── gemma-4-31b/                     # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
 ├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
+├── ornith-1.0-397B/                 # submission + REVIEW.md  (PASS WITH CONCERNS 22 → 28, r1; open-weight, cloud)
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen-agentworld-35b-a3b/         # submission (in govmomi-cli-eval-prompt/) + REVIEW*.md  (FAIL → PASS WITH CONCERNS, pass 2)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
