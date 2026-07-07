@@ -1,0 +1,8 @@
+# vSphere CLI configuration file
+# Place this file at ~/.vsphere-cli/config.yaml or specify with --config
+
+url: https://vcenter.example.com/sdk
+username: administrator@vsphere.local
+password: your-password-here
+insecure: false
+timeout: 60s
