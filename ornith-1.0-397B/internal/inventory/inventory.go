@@ -3,14 +3,15 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -61,38 +62,38 @@ func NewClient(ctx context.Context, u *url.URL, insecure bool) (*govmomi.Client,
 	return client, nil
 }
 
-// GetVMs retrieves all virtual machines with their inventory info.
+// GetVMs retrieves all virtual machines with their inventory info using
+// a single ContainerView + PropertyCollector retrieve (no per-object N+1).
 func GetVMs(ctx context.Context, c *vim25.Client) ([]VMInfo, error) {
-	finder := find.NewFinder(c, true)
-
-	dc, err := finder.DefaultDatacenter(ctx)
+	m := view.NewManager(c)
+	v, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"VirtualMachine"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("find default datacenter: %w", err)
+		return nil, fmt.Errorf("create VM container view: %w", err)
 	}
-	finder.SetDatacenter(dc)
+	defer v.Destroy(ctx)
 
-	vms, err := finder.VirtualMachineList(ctx, "*")
+	refs, err := v.Find(ctx, []string{"VirtualMachine"}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("list virtual machines: %w", err)
+		return nil, fmt.Errorf("find VMs: %w", err)
 	}
 
-	var results []VMInfo
-	for _, vm := range vms {
-		var props mo.VirtualMachine
-		if err := vm.Properties(ctx, vm.Reference(), []string{
-			"name", "config.hardware.numCPU", "config.hardware.memoryMB",
-			"summary.storage.committed",
-		}, &props); err != nil {
-			return nil, fmt.Errorf("get properties for VM %s: %w", vm.Name(), err)
-		}
+	pc := property.DefaultCollector(c)
+	var vmProps []mo.VirtualMachine
+	if err := pc.Retrieve(ctx, refs, []string{
+		"name", "config.hardware.numCPU", "config.hardware.memoryMB",
+		"summary.storage.committed",
+	}, &vmProps); err != nil {
+		return nil, fmt.Errorf("retrieve VM properties: %w", err)
+	}
 
-		info := VMInfo{
-			Name:  props.Name,
-			VCPU:  props.Config.Hardware.NumCPU,
-			RAMMB: props.Config.Hardware.MemoryMB,
-		}
-		info.Storage = props.Summary.Storage.Committed
-		results = append(results, info)
+	results := make([]VMInfo, 0, len(vmProps))
+	for _, vm := range vmProps {
+		results = append(results, VMInfo{
+			Name:    vm.Name,
+			VCPU:    vm.Config.Hardware.NumCPU,
+			RAMMB:   vm.Config.Hardware.MemoryMB,
+			Storage: vm.Summary.Storage.Committed,
+		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -101,45 +102,45 @@ func GetVMs(ctx context.Context, c *vim25.Client) ([]VMInfo, error) {
 	return results, nil
 }
 
-// GetDatastores retrieves all datastores with capacity and transport info.
+// GetDatastores retrieves all datastores with capacity and transport info
+// using a single ContainerView + PropertyCollector retrieve.
 func GetDatastores(ctx context.Context, c *vim25.Client) ([]DatastoreInfo, error) {
-	finder := find.NewFinder(c, true)
-
-	dc, err := finder.DefaultDatacenter(ctx)
+	m := view.NewManager(c)
+	v, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"Datastore"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("find default datacenter: %w", err)
+		return nil, fmt.Errorf("create datastore container view: %w", err)
 	}
-	finder.SetDatacenter(dc)
+	defer v.Destroy(ctx)
 
-	dss, err := finder.DatastoreList(ctx, "*")
+	refs, err := v.Find(ctx, []string{"Datastore"}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("list datastores: %w", err)
+		return nil, fmt.Errorf("find datastores: %w", err)
 	}
 
-	var results []DatastoreInfo
-	for _, ds := range dss {
-		var props mo.Datastore
-		if err := ds.Properties(ctx, ds.Reference(), []string{
-			"name", "summary.capacity", "summary.freeSpace",
-			"summary.type", "info",
-		}, &props); err != nil {
-			return nil, fmt.Errorf("get properties for datastore %s: %w", ds.Name(), err)
-		}
+	pc := property.DefaultCollector(c)
+	var dsProps []mo.Datastore
+	if err := pc.Retrieve(ctx, refs, []string{
+		"name", "summary.capacity", "summary.freeSpace",
+		"summary.type", "info", "host",
+	}, &dsProps); err != nil {
+		return nil, fmt.Errorf("retrieve datastore properties: %w", err)
+	}
 
+	results := make([]DatastoreInfo, 0, len(dsProps))
+	for _, ds := range dsProps {
 		info := DatastoreInfo{
-			Name:      props.Name,
-			Available: props.Summary.FreeSpace,
+			Name:      ds.Name,
+			Available: ds.Summary.FreeSpace,
 		}
-		if props.Summary.Capacity > 0 {
-			info.Used = formatter.UsedCapacity(props.Summary.Capacity, props.Summary.FreeSpace)
+		if ds.Summary.Capacity > 0 {
+			info.Used = formatter.UsedCapacity(ds.Summary.Capacity, ds.Summary.FreeSpace)
 		}
 
-		// Determine transport type
-		isNFS := props.Summary.Type == "NFS" || props.Summary.Type == "NFS41"
+		isNFS := ds.Summary.Type == "NFS" || ds.Summary.Type == "NFS41"
 		if isNFS {
 			info.Type = "NFS"
 		} else {
-			hbaTypes, deviceNames := extractBackingInfo(props)
+			hbaTypes, deviceNames := extractBackingInfo(ds)
 			info.Type = transport.ClassifyDatastoreTransport(false, hbaTypes, deviceNames)
 		}
 
@@ -161,6 +162,7 @@ func extractBackingInfo(ds mo.Datastore) (hbaTypes []string, deviceNames []strin
 		if info.Vmfs != nil {
 			for _, extent := range info.Vmfs.Extent {
 				deviceNames = append(deviceNames, extent.DiskName)
+				hbaTypes = append(hbaTypes, inferHBAType(extent.DiskName))
 			}
 		}
 	case *types.NasDatastoreInfo:
@@ -169,51 +171,65 @@ func extractBackingInfo(ds mo.Datastore) (hbaTypes []string, deviceNames []strin
 	return hbaTypes, deviceNames
 }
 
+// inferHBAType infers the host bus adapter type from a device name pattern.
+func inferHBAType(deviceName string) string {
+	lower := strings.ToLower(deviceName)
+	if strings.Contains(lower, "nvme") {
+		return "nvme"
+	}
+	if strings.Contains(lower, "iscsi") {
+		return "iscsi"
+	}
+	if strings.HasPrefix(lower, "naa.") || strings.HasPrefix(lower, "t10.") {
+		return "fc"
+	}
+	return ""
+}
+
 // GetVSwitches retrieves all virtual switches (standard and distributed).
 func GetVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {
-	var results []SwitchInfo
-
-	stdSwitches, err := getStandardVSwitches(ctx, c)
+	results, err := getStandardVSwitches(ctx, c)
 	if err != nil {
 		return nil, fmt.Errorf("get standard vswitches: %w", err)
 	}
-	results = append(results, stdSwitches...)
 
-	dvSwitches, err := getDistributedVSwitches(ctx, c)
+	dvResults, err := getDistributedVSwitches(ctx, c)
 	if err != nil {
 		return nil, fmt.Errorf("get distributed vswitches: %w", err)
 	}
-	results = append(results, dvSwitches...)
+	results = append(results, dvResults...)
 
 	return results, nil
 }
 
+// getStandardVSwitches retrieves standard vswitches using ContainerView +
+// PropertyCollector (single batched retrieve, no per-host Properties loop).
 func getStandardVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {
-	finder := find.NewFinder(c, true)
-
-	dc, err := finder.DefaultDatacenter(ctx)
+	m := view.NewManager(c)
+	v, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"HostSystem"}, true)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("create host container view: %w", err)
 	}
-	finder.SetDatacenter(dc)
+	defer v.Destroy(ctx)
 
-	hosts, err := finder.HostSystemList(ctx, "*")
+	refs, err := v.Find(ctx, []string{"HostSystem"}, nil)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("find hosts: %w", err)
+	}
+
+	pc := property.DefaultCollector(c)
+	var hostProps []mo.HostSystem
+	if err := pc.Retrieve(ctx, refs, []string{
+		"name", "config.network.vswitch", "config.network.portgroup",
+	}, &hostProps); err != nil {
+		return nil, fmt.Errorf("retrieve host network properties: %w", err)
 	}
 
 	seen := make(map[string]bool)
 	var results []SwitchInfo
 
-	for _, host := range hosts {
-		var props mo.HostSystem
-		if err := host.Properties(ctx, host.Reference(), []string{
-			"name", "config.network.vswitch", "config.network.portgroup",
-		}, &props); err != nil {
-			continue
-		}
-
-		for _, vs := range props.Config.Network.Vswitch {
+	for _, host := range hostProps {
+		for _, vs := range host.Config.Network.Vswitch {
 			name := vs.Name
 			if seen[name] {
 				continue
@@ -229,14 +245,12 @@ func getStandardVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 				UsedPorts:  vs.NumPorts - vs.NumPortsAvailable,
 			}
 
-			// Find port groups on this vswitch
-			for _, pg := range props.Config.Network.Portgroup {
+			for _, pg := range host.Config.Network.Portgroup {
 				if pg.Spec.VswitchName == name {
-					pgInfo := PortGroupInfo{
+					si.PortGroups = append(si.PortGroups, PortGroupInfo{
 						Name: pg.Spec.Name,
 						VLAN: formatVLAN(pg.Spec.VlanId),
-					}
-					si.PortGroups = append(si.PortGroups, pgInfo)
+					})
 				}
 			}
 
@@ -247,60 +261,83 @@ func getStandardVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, e
 	return results, nil
 }
 
+// getDistributedVSwitches retrieves distributed vswitches using ContainerView +
+// PropertyCollector. Port group names are resolved in a single batched retrieve.
 func getDistributedVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {
-	// Use NetworkList to find DVS objects
-	finder := find.NewFinder(c, true)
-
-	dc, err := finder.DefaultDatacenter(ctx)
+	m := view.NewManager(c)
+	v, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"DistributedVirtualSwitch"}, true)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("create DVS container view: %w", err)
 	}
-	finder.SetDatacenter(dc)
+	defer v.Destroy(ctx)
 
-	nets, err := finder.NetworkList(ctx, "*")
+	refs, err := v.Find(ctx, []string{"DistributedVirtualSwitch"}, nil)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("find distributed vswitches: %w", err)
 	}
 
+	if len(refs) == 0 {
+		return nil, nil
+	}
+
+	pc := property.DefaultCollector(c)
+	var dvsProps []mo.DistributedVirtualSwitch
+	if err := pc.Retrieve(ctx, refs, []string{"name", "config", "portgroup"}, &dvsProps); err != nil {
+		return nil, fmt.Errorf("retrieve DVS properties: %w", err)
+	}
+
+	// Collect all port group refs for a single batched retrieve
+	var allPGRefs []types.ManagedObjectReference
+	type dvsEntry struct {
+		dvs    mo.DistributedVirtualSwitch
+		pgRefs []types.ManagedObjectReference
+	}
 	seen := make(map[string]bool)
+	var dvsList []dvsEntry
+
+	for _, dvs := range dvsProps {
+		if seen[dvs.Name] {
+			continue
+		}
+		seen[dvs.Name] = true
+
+		entry := dvsEntry{dvs: dvs}
+		for _, pgRef := range dvs.Portgroup {
+			entry.pgRefs = append(entry.pgRefs, pgRef)
+			allPGRefs = append(allPGRefs, pgRef)
+		}
+		dvsList = append(dvsList, entry)
+	}
+
+	// Single batched retrieve for all port group names
+	pgNames := make(map[types.ManagedObjectReference]string)
+	if len(allPGRefs) > 0 {
+		var pgProps []mo.DistributedVirtualPortgroup
+		if err := pc.Retrieve(ctx, allPGRefs, []string{"name"}, &pgProps); err != nil {
+			return nil, fmt.Errorf("retrieve port group properties: %w", err)
+		}
+		for _, pg := range pgProps {
+			pgNames[pg.Reference()] = pg.Name
+		}
+	}
+
 	var results []SwitchInfo
-
-	for _, net := range nets {
-		// Check if it's a DVS
-		dvs, ok := net.(*object.DistributedVirtualSwitch)
-		if !ok {
-			continue
-		}
-
-		var props mo.DistributedVirtualSwitch
-		if err := dvs.Properties(ctx, dvs.Reference(), []string{
-			"name", "config", "portgroup",
-		}, &props); err != nil {
-			continue
-		}
-
-		if seen[props.Name] {
-			continue
-		}
-		seen[props.Name] = true
-
+	for _, entry := range dvsList {
+		dvs := entry.dvs
 		si := SwitchInfo{
-			SwitchName: props.Name,
+			SwitchName: dvs.Name,
 			SwitchType: "distributed",
 		}
 
-		// LACP and uplinks require VMwareDVSConfigInfo
-		if vmwareCfg, ok := props.Config.(*types.VMwareDVSConfigInfo); ok {
+		if vmwareCfg, ok := dvs.Config.(*types.VMwareDVSConfigInfo); ok {
 			if vmwareCfg.LacpApiVersion != "" {
 				si.LACP = "enabled"
 			} else {
 				si.LACP = "disabled"
 			}
-
 			if uplinkPolicy, ok := vmwareCfg.UplinkPortPolicy.(*types.DVSNameArrayUplinkPortPolicy); ok {
 				si.Uplinks = strings.Join(uplinkPolicy.UplinkPortName, ", ")
 			}
-
 			if vmwareCfg.NumPorts > 0 {
 				si.Ports = vmwareCfg.NumPorts
 			}
@@ -308,18 +345,10 @@ func getDistributedVSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo
 			si.LACP = "disabled"
 		}
 
-		// Port groups
-		for _, pgRef := range props.Portgroup {
-			var pgProps mo.DistributedVirtualPortgroup
-			if err := property.DefaultCollector(c).RetrieveOne(ctx, pgRef, []string{
-				"name",
-			}, &pgProps); err != nil {
-				continue
+		for _, pgRef := range entry.pgRefs {
+			if name, ok := pgNames[pgRef]; ok {
+				si.PortGroups = append(si.PortGroups, PortGroupInfo{Name: name})
 			}
-			pgInfo := PortGroupInfo{
-				Name: pgProps.Name,
-			}
-			si.PortGroups = append(si.PortGroups, pgInfo)
 		}
 
 		results = append(results, si)
@@ -342,99 +371,90 @@ func formatVLAN(vlanID int32) string {
 }
 
 // GetVMsByPortGroup returns VMs connected to a named port group.
+// Uses a single batched retrieve to build a VM->networks map, resolves the
+// target PG's moref once, then matches — no O(VMs x NICs) inner loop.
 func GetVMsByPortGroup(ctx context.Context, c *vim25.Client, portGroupName string) ([]VMInfo, error) {
-	finder := find.NewFinder(c, true)
-
-	dc, err := finder.DefaultDatacenter(ctx)
-	if err != nil {
-		return nil, nil
-	}
-	finder.SetDatacenter(dc)
-
-	var vmRefs []types.ManagedObjectReference
-
-	// Check distributed port groups
-	nets, err := finder.NetworkList(ctx, "*")
-	if err == nil {
-		for _, net := range nets {
-			dvs, ok := net.(*object.DistributedVirtualSwitch)
-			if !ok {
-				continue
-			}
-			var dvsProps mo.DistributedVirtualSwitch
-			if err := dvs.Properties(ctx, dvs.Reference(), []string{"portgroup"}, &dvsProps); err != nil {
-				continue
-			}
-			for _, pgRef := range dvsProps.Portgroup {
-				var pgProps mo.DistributedVirtualPortgroup
-				if err := property.DefaultCollector(c).RetrieveOne(ctx, pgRef, []string{"name"}, &pgProps); err != nil {
-					continue
-				}
-				if pgProps.Name == portGroupName {
-					vms, err := getVMsForDistributedPortGroup(ctx, c, pgRef)
-					if err != nil {
-						continue
-					}
-					vmRefs = append(vmRefs, vms...)
-				}
-			}
-		}
-	}
-
-	// Check all VMs and their network connections
-	allVMs, err := finder.VirtualMachineList(ctx, "*")
-	if err == nil {
-		for _, vm := range allVMs {
-			var props mo.VirtualMachine
-			if err := vm.Properties(ctx, vm.Reference(), []string{"network"}, &props); err != nil {
-				continue
-			}
-			for _, net := range props.Network {
-				// Check if this network name matches the port group name
-				var netProps mo.Network
-				if err := property.DefaultCollector(c).RetrieveOne(ctx, net, []string{"name"}, &netProps); err != nil {
-					continue
-				}
-				if netProps.Name == portGroupName {
-					vmRefs = append(vmRefs, vm.Reference())
-				}
-			}
-		}
-	}
-
-	if len(vmRefs) == 0 {
-		return nil, nil
-	}
-
-	// Deduplicate
-	seen := make(map[types.ManagedObjectReference]bool)
-	var uniqueRefs []types.ManagedObjectReference
-	for _, ref := range vmRefs {
-		if !seen[ref] {
-			seen[ref] = true
-			uniqueRefs = append(uniqueRefs, ref)
-		}
-	}
-
-	// Fetch VM info
 	pc := property.DefaultCollector(c)
+	m := view.NewManager(c)
+
+	// Resolve target port group MOR
+	netView, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"Network"}, true)
+	if err != nil {
+		return nil, fmt.Errorf("create network container view: %w", err)
+	}
+	defer netView.Destroy(ctx)
+
+	netRefs, err := netView.Find(ctx, []string{"Network"}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("find networks: %w", err)
+	}
+
+	var netProps []mo.Network
+	if err := pc.Retrieve(ctx, netRefs, []string{"name"}, &netProps); err != nil {
+		return nil, fmt.Errorf("retrieve network names: %w", err)
+	}
+
+	// Collect all MORs matching the port group name (multiple hosts may
+	// each have a port group with the same name, e.g. "VM Network").
+	targetRefs := make(map[types.ManagedObjectReference]bool)
+	for _, n := range netProps {
+		if n.Name == portGroupName {
+			targetRefs[n.Reference()] = true
+		}
+	}
+	if len(targetRefs) == 0 {
+		return nil, nil
+	}
+
+	// Single batched retrieve: all VMs with their network refs
+	vmView, err := m.CreateContainerView(ctx, c.ServiceContent.RootFolder, []string{"VirtualMachine"}, true)
+	if err != nil {
+		return nil, fmt.Errorf("create VM container view: %w", err)
+	}
+	defer vmView.Destroy(ctx)
+
+	vmRefs, err := vmView.Find(ctx, []string{"VirtualMachine"}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("find VMs: %w", err)
+	}
+
+	var vms []mo.VirtualMachine
+	if err := pc.Retrieve(ctx, vmRefs, []string{"name", "network"}, &vms); err != nil {
+		return nil, fmt.Errorf("retrieve VM network refs: %w", err)
+	}
+
+	// Match VMs to target port group — single scan over in-memory data
+	var matchingRefs []types.ManagedObjectReference
+	for _, vm := range vms {
+		for _, net := range vm.Network {
+			if targetRefs[net] {
+				matchingRefs = append(matchingRefs, vm.Reference())
+				break
+			}
+		}
+	}
+
+	if len(matchingRefs) == 0 {
+		return nil, nil
+	}
+
+	// Batch retrieve full VM info for matches only
 	var vmProps []mo.VirtualMachine
-	if err := pc.Retrieve(ctx, uniqueRefs, []string{
+	if err := pc.Retrieve(ctx, matchingRefs, []string{
 		"name", "config.hardware.numCPU", "config.hardware.memoryMB",
 		"summary.storage.committed",
 	}, &vmProps); err != nil {
 		return nil, fmt.Errorf("retrieve VM properties: %w", err)
 	}
 
-	var results []VMInfo
+	results := make([]VMInfo, 0, len(vmProps))
 	for _, vm := range vmProps {
-		info := VMInfo{
-			Name:  vm.Name,
-			VCPU:  vm.Config.Hardware.NumCPU,
-			RAMMB: vm.Config.Hardware.MemoryMB,
-		}
-		info.Storage = vm.Summary.Storage.Committed
-		results = append(results, info)
+		results = append(results, VMInfo{
+			Name:    vm.Name,
+			VCPU:    vm.Config.Hardware.NumCPU,
+			RAMMB:   vm.Config.Hardware.MemoryMB,
+			Storage: vm.Summary.Storage.Committed,
+		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -443,25 +463,31 @@ func GetVMsByPortGroup(ctx context.Context, c *vim25.Client, portGroupName strin
 	return results, nil
 }
 
-func getVMsForDistributedPortGroup(ctx context.Context, c *vim25.Client, pgRef types.ManagedObjectReference) ([]types.ManagedObjectReference, error) {
-	finder := find.NewFinder(c, true)
-	vms, err := finder.VirtualMachineList(ctx, "*")
-	if err != nil {
-		return nil, err
-	}
-
-	var refs []types.ManagedObjectReference
-	for _, vm := range vms {
-		var props mo.VirtualMachine
-		if err := vm.Properties(ctx, vm.Reference(), []string{"network"}, &props); err != nil {
-			continue
-		}
-		for _, net := range props.Network {
-			if net == pgRef {
-				refs = append(refs, vm.Reference())
-				break
+// WriteVSwitches formats and writes switch info to the given writer.
+// Extracted from inline RunE formatting for readability (L5).
+func WriteVSwitches(w io.Writer, switches []SwitchInfo) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tPORTS\tUSED")
+	for _, sw := range switches {
+		if len(sw.PortGroups) == 0 {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
+				sw.SwitchName, sw.SwitchType,
+				"-", "-", sw.Uplinks, sw.LACP, sw.Ports, sw.UsedPorts,
+			)
+		} else {
+			for i, pg := range sw.PortGroups {
+				if i == 0 {
+					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
+						sw.SwitchName, sw.SwitchType,
+						pg.Name, pg.VLAN, sw.Uplinks, sw.LACP, sw.Ports, sw.UsedPorts,
+					)
+				} else {
+					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
+						"", "", pg.Name, pg.VLAN, "", "", 0, 0,
+					)
+				}
 			}
 		}
 	}
-	return refs, nil
+	return tw.Flush()
 }

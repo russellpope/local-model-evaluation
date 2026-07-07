@@ -95,8 +95,6 @@ func TestGetDatastores(t *testing.T) {
 		if ds.Used < 0 {
 			t.Errorf("datastore %s: used should be >= 0", ds.Name)
 		}
-		// used + available should be <= capacity (within rounding)
-		// We can't check exact capacity from our struct, but used should be reasonable
 	}
 
 	// Verify sorted by name
@@ -137,7 +135,6 @@ func TestGetVSwitches(t *testing.T) {
 		if sw.Ports > 0 && sw.UsedPorts > sw.Ports {
 			t.Errorf("switch %s: used ports (%d) > total ports (%d)", sw.SwitchName, sw.UsedPorts, sw.Ports)
 		}
-		// VLAN values should parse (not empty for non-N/A cases)
 		for _, pg := range sw.PortGroups {
 			if pg.Name == "" {
 				t.Errorf("switch %s: port group name should not be empty", sw.SwitchName)
@@ -150,39 +147,74 @@ func TestGetVMsByPortGroup(t *testing.T) {
 	c := setupSimulator(t)
 	ctx := context.Background()
 
-	// First, get the list of switches to find a real port group name
+	// Get all VMs for cross-validation
+	allVMs, err := GetVMs(ctx, c)
+	if err != nil {
+		t.Fatalf("GetVMs: %v", err)
+	}
+	if len(allVMs) == 0 {
+		t.Fatal("simulator should have at least 1 VM")
+	}
+
+	// Get switches to find a real port group name
 	switches, err := GetVSwitches(ctx, c)
 	if err != nil {
 		t.Fatalf("GetVSwitches: %v", err)
 	}
-
 	if len(switches) == 0 {
-		t.Skip("no switches found")
+		t.Fatal("simulator should have at least one switch")
 	}
 
-	// Find a port group name
+	// Find a port group that actually has VMs connected.
+	// (In the VPX simulator, VMs attach to the distributed PG, not the
+	// standard "VM Network".)
 	var pgName string
+	var vms []VMInfo
 	for _, sw := range switches {
-		if len(sw.PortGroups) > 0 {
-			pgName = sw.PortGroups[0].Name
+		for _, pg := range sw.PortGroups {
+			result, err := GetVMsByPortGroup(ctx, c, pg.Name)
+			if err != nil {
+				t.Fatalf("GetVMsByPortGroup(%q): %v", pg.Name, err)
+			}
+			if len(result) > 0 {
+				pgName = pg.Name
+				vms = result
+				break
+			}
+		}
+		if pgName != "" {
 			break
 		}
 	}
-
 	if pgName == "" {
-		t.Skip("no port group found")
+		t.Fatal("no port group with connected VMs found in simulator")
 	}
 
-	vms, err := GetVMsByPortGroup(ctx, c, pgName)
-	if err != nil {
-		t.Fatalf("GetVMsByPortGroup(%q): %v", pgName, err)
+	if len(vms) == 0 {
+		t.Errorf("GetVMsByPortGroup(%q): expected at least 1 VM, got 0", pgName)
 	}
 
-	// Should return some VMs (simulator attaches VMs to port groups)
-	// The exact count depends on simulator model, but should not error
+	// Validate returned VMs have required fields populated
 	for _, vm := range vms {
 		if vm.Name == "" {
 			t.Error("VM name should not be empty")
+		}
+		if vm.VCPU <= 0 {
+			t.Errorf("VM %s: vCPU should be > 0, got %d", vm.Name, vm.VCPU)
+		}
+		if vm.RAMMB <= 0 {
+			t.Errorf("VM %s: RAM should be > 0, got %d", vm.Name, vm.RAMMB)
+		}
+	}
+
+	// Returned VMs must be a subset of all VMs
+	allVMNames := make(map[string]bool, len(allVMs))
+	for _, vm := range allVMs {
+		allVMNames[vm.Name] = true
+	}
+	for _, vm := range vms {
+		if !allVMNames[vm.Name] {
+			t.Errorf("VM %q returned by port group lookup but not in full VM list", vm.Name)
 		}
 	}
 }

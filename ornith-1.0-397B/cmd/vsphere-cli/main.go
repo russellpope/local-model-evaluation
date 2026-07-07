@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/vmware/govmomi"
@@ -47,7 +48,7 @@ func main() {
 	}
 }
 
-func loadConfig() (*config.Config, error) {
+func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 	flagOverrides := map[string]string{
 		"url":      flagURL,
 		"username": flagUsername,
@@ -55,8 +56,10 @@ func loadConfig() (*config.Config, error) {
 		"timeout":  flagTimeout,
 		"config":   flagConfig,
 	}
-	if flagInsecure {
-		flagOverrides["insecure"] = "true"
+	// Always check if --insecure was explicitly set so --insecure=false can
+	// override VSPHERE_INSECURE=true (L2 fix).
+	if cmd.Flags().Changed("insecure") {
+		flagOverrides["insecure"] = fmt.Sprintf("%t", flagInsecure)
 	}
 	return config.Load(flagOverrides, "VSPHERE")
 }
@@ -80,7 +83,7 @@ func vmsCmd() *cobra.Command {
 		Use:   "vms",
 		Short: "List virtual machines",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			cfg, err := loadConfig(cmd)
 			if err != nil {
 				return err
 			}
@@ -92,7 +95,13 @@ func vmsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Logout(ctx)
+			// L1: use a fresh short-timeout context for logout so a deadline-
+			// expired operation context does not silently fail cleanup.
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				client.Logout(cleanupCtx)
+			}()
 
 			vms, err := inventory.GetVMs(ctx, client.Client)
 			if err != nil {
@@ -119,7 +128,7 @@ func datastoresCmd() *cobra.Command {
 		Use:   "datastores",
 		Short: "List datastores",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			cfg, err := loadConfig(cmd)
 			if err != nil {
 				return err
 			}
@@ -131,7 +140,11 @@ func datastoresCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Logout(ctx)
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				client.Logout(cleanupCtx)
+			}()
 
 			dss, err := inventory.GetDatastores(ctx, client.Client)
 			if err != nil {
@@ -160,7 +173,7 @@ func vswitchesCmd() *cobra.Command {
 		Use:   "vswitches",
 		Short: "List virtual switches",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			cfg, err := loadConfig(cmd)
 			if err != nil {
 				return err
 			}
@@ -172,7 +185,11 @@ func vswitchesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Logout(ctx)
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				client.Logout(cleanupCtx)
+			}()
 
 			if portGroupName != "" {
 				return runPortGroupLookup(ctx, client.Client, portGroupName)
@@ -183,30 +200,7 @@ func vswitchesCmd() *cobra.Command {
 				return err
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tPORTS\tUSED")
-			for _, sw := range switches {
-				if len(sw.PortGroups) == 0 {
-					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-						sw.SwitchName, sw.SwitchType,
-						"-", "-", sw.Uplinks, sw.LACP, sw.Ports, sw.UsedPorts,
-					)
-				} else {
-					for i, pg := range sw.PortGroups {
-						if i == 0 {
-							fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-								sw.SwitchName, sw.SwitchType,
-								pg.Name, pg.VLAN, sw.Uplinks, sw.LACP, sw.Ports, sw.UsedPorts,
-							)
-						} else {
-							fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-								"", "", pg.Name, pg.VLAN, "", "", 0, 0,
-							)
-						}
-					}
-				}
-			}
-			return w.Flush()
+			return inventory.WriteVSwitches(os.Stdout, switches)
 		},
 	}
 

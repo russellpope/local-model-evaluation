@@ -32,11 +32,13 @@ func Load(flagOverrides map[string]string, envPrefix string) (*Config, error) {
 	// Environment variables
 	v.SetEnvPrefix(envPrefix)
 	v.AutomaticEnv()
-	v.BindEnv("url", envPrefix+"_URL")
-	v.BindEnv("username", envPrefix+"_USERNAME")
-	v.BindEnv("password", envPrefix+"_PASSWORD")
-	v.BindEnv("insecure", envPrefix+"_INSECURE")
-	v.BindEnv("timeout", envPrefix+"_TIMEOUT")
+	// Explicitly ignore BindEnv errors (L4): BindEnv only errors on empty key
+	// list, which is a programmer error, not a runtime condition.
+	_ = v.BindEnv("url", envPrefix+"_URL")
+	_ = v.BindEnv("username", envPrefix+"_USERNAME")
+	_ = v.BindEnv("password", envPrefix+"_PASSWORD")
+	_ = v.BindEnv("insecure", envPrefix+"_INSECURE")
+	_ = v.BindEnv("timeout", envPrefix+"_TIMEOUT")
 
 	// Config file (optional)
 	if cfgFile, ok := flagOverrides["config"]; ok && cfgFile != "" {

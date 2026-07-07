@@ -20,11 +20,6 @@ func FormatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f GiB", math.Round(val*10)/10)
 }
 
-// FormatBytesFloat converts a float64 byte count to a human-readable string.
-func FormatBytesFloat(bytes float64) string {
-	return FormatBytes(int64(bytes))
-}
-
 // UsedCapacity computes used = total - available, clamped to >= 0.
 func UsedCapacity(total, available int64) int64 {
 	used := total - available
