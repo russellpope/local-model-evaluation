@@ -215,10 +215,11 @@ func TestPortGroupVMs(t *testing.T) {
 
 	vms, err := ListPortGroupVMs(context.Background(), client, "VM Network")
 	if err != nil {
-		t.Logf("ListPortGroupVMs for VM Network: %v", err)
+		t.Fatalf("ListPortGroupVMs for VM Network: %v", err)
 	}
-	if len(vms) == 0 {
-		t.Log("VM Network returned 0 VMs (simulator may not attach VMs to standard PG)")
+	// vcsim attaches VMs only to distributed PGs; standard PG "VM Network" exists but has 0 VMs.
+	if len(vms) != 0 {
+		t.Errorf("VM Network returned %d VMs, want 0", len(vms))
 	}
 	for _, vm := range vms {
 		if vm.Name == "" {

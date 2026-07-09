@@ -107,6 +107,13 @@ if ! echo "$PG_OUTPUT" | grep -qv "VM NAME\|^$\|SWITCH\|PORT GROUP"; then
 fi
 echo "PASS: vswitches --portgroup $PG_NAME returned VM rows"
 
+# Test standard port group "VM Network" — should succeed (empty set, not error).
+echo ""
+echo "=== Running: ./$BINARY vswitches --portgroup VM Network ==="
+STD_PG_OUTPUT=$("./$BINARY" vswitches --portgroup "VM Network") || { kill $VCSIM_PID 2>/dev/null; exit 1; }
+echo "$STD_PG_OUTPUT"
+echo "PASS: vswitches --portgroup VM Network returned (empty, no error)"
+
 # Test distributed port group
 echo ""
 echo "=== Running: ./$BINARY vswitches --portgroup DC0_DVPG0 ==="

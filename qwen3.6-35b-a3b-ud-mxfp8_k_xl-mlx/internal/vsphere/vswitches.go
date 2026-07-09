@@ -207,34 +207,11 @@ func listDistributedSwitches(ctx context.Context, client *govmomi.Client) ([]Swi
 			})
 		}
 
-		totalPorts := dvs.Summary.NumPorts
-		// Derive total ports from host members if simulator doesn't populate it.
-		if totalPorts <= 0 && len(dvs.Summary.HostMember) > 0 {
-			// Get port count from one of the host members' standard switch.
-			for _, hostRef := range dvs.Summary.HostMember {
-				var hostMo mo.HostSystem
-				if err := pc.RetrieveOne(ctx, hostRef, []string{"config.network.vswitch"}, &hostMo); err != nil {
-					continue
-				}
-				if hostMo.Config != nil && hostMo.Config.Network != nil {
-					for _, vsw := range hostMo.Config.Network.Vswitch {
-						if vsw.NumPorts > 0 {
-							totalPorts = vsw.NumPorts * int32(len(dvs.Summary.HostMember))
-							break
-						}
-					}
-				}
-				if totalPorts > 0 {
-					break
-				}
-			}
-		}
-
 		result = append(result, SwitchInfo{
 			SwitchName: dvs.Name,
 			SwitchType: "distributed",
 			PortGroups: portGroups,
-			TotalPorts: totalPorts,
+			TotalPorts: dvs.Summary.NumPorts,
 			LACP:       "N/A",
 		})
 	}
@@ -248,6 +225,77 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 	datacenters, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
 		return nil, fmt.Errorf("list datacenters: %w", err)
+	}
+
+	// First: check if the port group exists at all (by name in network folder or host configs).
+	pgExists := false
+	for _, dc := range datacenters {
+		folders, err := dc.Folders(ctx)
+		if err != nil {
+			continue
+		}
+		if folders == nil || folders.NetworkFolder == nil {
+			continue
+		}
+		nets, err := folders.NetworkFolder.Children(ctx)
+		if err != nil {
+			continue
+		}
+		for _, net := range nets {
+			ref := net.Reference()
+			var pgName string
+			switch ref.Type {
+			case "Network":
+				var netMo mo.Network
+				pc := client.PropertyCollector()
+				if err := pc.RetrieveOne(ctx, ref, []string{"name"}, &netMo); err == nil {
+					pgName = netMo.Name
+				}
+			case "DistributedVirtualPortgroup":
+				var pgMo mo.DistributedVirtualPortgroup
+				pc := client.PropertyCollector()
+				if err := pc.RetrieveOne(ctx, ref, []string{"name"}, &pgMo); err == nil {
+					pgName = pgMo.Name
+				}
+			}
+			if pgName != "" && strings.EqualFold(pgName, portGroupName) {
+				pgExists = true
+				break
+			}
+		}
+		if pgExists {
+			break
+		}
+
+		// Also check host port groups for standard PGs.
+		hostFinder := find.NewFinder(client.Client, false)
+		hostFinder.SetDatacenter(dc)
+		hosts, _ := hostFinder.HostSystemList(ctx, "*")
+		for _, h := range hosts {
+			var hostMo mo.HostSystem
+			pc := client.PropertyCollector()
+			if err := pc.RetrieveOne(ctx, h.Reference(), []string{"config.network.portgroup"}, &hostMo); err != nil {
+				continue
+			}
+			if hostMo.Config != nil && hostMo.Config.Network != nil {
+				for _, pg := range hostMo.Config.Network.Portgroup {
+					if strings.EqualFold(pg.Spec.Name, portGroupName) {
+						pgExists = true
+						break
+					}
+				}
+			}
+			if pgExists {
+				break
+			}
+		}
+		if pgExists {
+			break
+		}
+	}
+
+	if !pgExists {
+		return nil, fmt.Errorf("port group %q not found", portGroupName)
 	}
 
 	// Try distributed port group back-reference first (fast path for DVS where vcsim may populate it).
@@ -350,7 +398,7 @@ func ListPortGroupVMs(ctx context.Context, client *govmomi.Client, portGroupName
 		}
 	}
 
-	return nil, fmt.Errorf("port group %q not found", portGroupName)
+	return nil, nil
 }
 
 // matchFromDevice checks if a VM's hardware devices indicate connection to the given port group.
