@@ -18,6 +18,7 @@ bin/
 /qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/vsphere-cli/vsphere-cli
 /gemma-4-31b/govmomi-cli
 /qwen-agentworld-35b-a3b/govmomi-cli-eval-prompt/govmomi-cli
+/ornith-1.0-397B/vsphere-cli
 
 # Vector DB / evaluation artifacts
 ruvector.db
