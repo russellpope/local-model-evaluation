@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
@@ -120,24 +121,54 @@ func TestListVMsByPortGroupWithSimulator(t *testing.T) {
 		if len(vms) != count.Machine {
 			t.Fatalf("len(vms attached to %q) = %d, want %d", portGroup, len(vms), count.Machine)
 		}
-		names := make([]string, 0, len(vms))
-		for _, vm := range vms {
-			names = append(names, vm.Name)
+		assertVMNames(t, portGroup, vms, "DC0_C0_RP0_VM0,DC0_C0_RP0_VM1,DC0_H0_VM0,DC0_H0_VM1")
+	})
+}
+
+func TestListVMsByStandardPortGroupWithSimulator(t *testing.T) {
+	withSimulatorPortgroups(t, 0, func(ctx context.Context, inv *Inventory, count simulator.Model) {
+		switches, err := inv.ListSwitches(ctx)
+		if err != nil {
+			t.Fatalf("ListSwitches: %v", err)
 		}
-		sort.Strings(names)
-		if strings.Join(names, ",") != "DC0_C0_RP0_VM0,DC0_C0_RP0_VM1,DC0_H0_VM0,DC0_H0_VM1" {
-			t.Fatalf("VMs attached to %q = %v", portGroup, names)
+		if !hasSwitchPortGroup(switches, "standard", "VM Network") {
+			t.Fatalf("standard VM Network was not present in switch output: %#v", switches)
+		}
+
+		vms, err := inv.ListVMsByPortGroup(ctx, "VM Network")
+		if err != nil {
+			t.Fatalf("ListVMsByPortGroup(%q): %v", "VM Network", err)
+		}
+		if len(vms) != count.Machine {
+			t.Fatalf("len(vms attached to VM Network) = %d, want %d", len(vms), count.Machine)
+		}
+		assertVMNames(t, "VM Network", vms, "DC0_C0_RP0_VM0,DC0_C0_RP0_VM1,DC0_H0_VM0,DC0_H0_VM1")
+
+		empty, err := inv.ListVMsByPortGroup(ctx, "Management Network")
+		if err != nil {
+			t.Fatalf("ListVMsByPortGroup(%q): %v", "Management Network", err)
+		}
+		if len(empty) != 0 {
+			t.Fatalf("len(vms attached to Management Network) = %d, want 0: %#v", len(empty), empty)
+		}
+
+		if _, err := inv.ListVMsByPortGroup(ctx, "NoSuchPG"); err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("ListVMsByPortGroup(%q) error = %v, want not found", "NoSuchPG", err)
 		}
 	})
 }
 
 func withSimulator(t *testing.T, run func(context.Context, *Inventory, simulator.Model)) {
+	withSimulatorPortgroups(t, 1, run)
+}
+
+func withSimulatorPortgroups(t *testing.T, portgroups int, run func(context.Context, *Inventory, simulator.Model)) {
 	t.Helper()
 
 	model := simulator.VPX()
 	model.Machine = 2
 	model.Datastore = 2
-	model.Portgroup = 1
+	model.Portgroup = portgroups
 	if err := model.Create(); err != nil {
 		t.Fatalf("create simulator model: %v", err)
 	}
@@ -162,6 +193,28 @@ func withSimulator(t *testing.T, run func(context.Context, *Inventory, simulator
 	run(ctx, NewInventory(client.Client), model.Count())
 }
 
+func hasSwitchPortGroup(switches []SwitchInfo, switchType, portGroup string) bool {
+	for _, sw := range switches {
+		if sw.SwitchType == switchType && sw.PortGroup == portGroup {
+			return true
+		}
+	}
+	return false
+}
+
+func assertVMNames(t *testing.T, portGroup string, vms []VMInfo, want string) {
+	t.Helper()
+
+	names := make([]string, 0, len(vms))
+	for _, vm := range vms {
+		names = append(names, vm.Name)
+	}
+	sort.Strings(names)
+	if strings.Join(names, ",") != want {
+		t.Fatalf("VMs attached to %q = %v, want %s", portGroup, names, want)
+	}
+}
+
 func validTransport(t StorageTransport) bool {
 	switch t {
 	case TransportFC, TransportISCSI, TransportNVMe, TransportNFS, TransportUnknown:
@@ -172,8 +225,60 @@ func validTransport(t StorageTransport) bool {
 }
 
 func parseVLAN(v string) (int, error) {
-	if v == "" || v == "N/A" || strings.Contains(v, "-") || strings.Contains(v, ",") || strings.Contains(v, "trunk") || strings.Contains(v, "private") {
+	if v == "" {
+		return 0, fmt.Errorf("empty VLAN")
+	}
+	if v == "N/A" {
 		return 0, nil
 	}
-	return strconv.Atoi(v)
+	if strings.HasPrefix(v, "trunk") {
+		ranges := strings.TrimSpace(strings.TrimPrefix(v, "trunk"))
+		if ranges == "" {
+			return 0, nil
+		}
+		for _, part := range strings.Split(ranges, ",") {
+			if err := parseVLANRange(part); err != nil {
+				return 0, err
+			}
+		}
+		return 0, nil
+	}
+	if strings.HasPrefix(v, "private ") {
+		return parseVLANID(strings.TrimPrefix(v, "private "))
+	}
+	return parseVLANID(v)
+}
+
+func parseVLANRange(v string) error {
+	parts := strings.Split(v, "-")
+	if len(parts) == 1 {
+		_, err := parseVLANID(parts[0])
+		return err
+	}
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid VLAN range %q", v)
+	}
+	start, err := parseVLANID(parts[0])
+	if err != nil {
+		return err
+	}
+	end, err := parseVLANID(parts[1])
+	if err != nil {
+		return err
+	}
+	if start > end {
+		return fmt.Errorf("invalid VLAN range %q", v)
+	}
+	return nil
+}
+
+func parseVLANID(v string) (int, error) {
+	id, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, err
+	}
+	if id < 0 || id > 4095 {
+		return 0, fmt.Errorf("VLAN %d outside 0-4095", id)
+	}
+	return id, nil
 }

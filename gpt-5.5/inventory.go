@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -52,13 +51,22 @@ func (i *Inventory) ListDatastores(ctx context.Context) ([]DatastoreInfo, error)
 		return nil, fmt.Errorf("retrieve datastores: %w", err)
 	}
 
+	var storage []types.HostStorageDeviceInfo
+	if containsVMFS(datastores) {
+		var err error
+		storage, err = i.hostStorageDevices(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	out := make([]DatastoreInfo, 0, len(datastores))
 	for _, ds := range datastores {
 		capacity := ds.Summary.Capacity
 		available := ds.Summary.FreeSpace
 		out = append(out, DatastoreInfo{
 			Name:           ds.Name,
-			Type:           datastoreTransport(ds),
+			Type:           datastoreTransport(ds, storage),
 			UsedBytes:      UsedBytes(capacity, available),
 			AvailableBytes: available,
 			CapacityBytes:  capacity,
@@ -93,11 +101,11 @@ func (i *Inventory) ListSwitches(ctx context.Context) ([]SwitchInfo, error) {
 }
 
 func (i *Inventory) ListVMsByPortGroup(ctx context.Context, name string) ([]VMInfo, error) {
-	netRefs, dpgKeys, err := i.networkRefsByName(ctx, name)
+	netRefs, dpgKeys, found, err := i.networkRefsByName(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	if len(netRefs) == 0 && len(dpgKeys) == 0 {
+	if !found {
 		return nil, fmt.Errorf("portgroup %q was not found", name)
 	}
 
@@ -139,6 +147,22 @@ func (i *Inventory) retrieve(ctx context.Context, kinds []string, props []string
 		return fmt.Errorf("retrieve properties %v: %w", props, err)
 	}
 	return nil
+}
+
+func (i *Inventory) hostStorageDevices(ctx context.Context) ([]types.HostStorageDeviceInfo, error) {
+	var hosts []mo.HostSystem
+	if err := i.retrieve(ctx, []string{"HostSystem"}, []string{"name", "config.storageDevice"}, &hosts); err != nil {
+		return nil, fmt.Errorf("retrieve host storage devices: %w", err)
+	}
+
+	storage := make([]types.HostStorageDeviceInfo, 0, len(hosts))
+	for _, host := range hosts {
+		if host.Config == nil || host.Config.StorageDevice == nil {
+			continue
+		}
+		storage = append(storage, *host.Config.StorageDevice)
+	}
+	return storage, nil
 }
 
 func (i *Inventory) standardSwitches(ctx context.Context) ([]SwitchInfo, error) {
@@ -233,26 +257,29 @@ func (i *Inventory) distributedSwitches(ctx context.Context) ([]SwitchInfo, erro
 	return rows, nil
 }
 
-func (i *Inventory) networkRefsByName(ctx context.Context, name string) (map[string]bool, map[string]bool, error) {
+func (i *Inventory) networkRefsByName(ctx context.Context, name string) (map[string]bool, map[string]bool, bool, error) {
 	refs := map[string]bool{}
 	dpgKeys := map[string]bool{}
+	found := false
 
 	var networks []mo.Network
 	if err := i.retrieve(ctx, []string{"Network"}, []string{"name"}, &networks); err != nil {
-		return nil, nil, fmt.Errorf("retrieve networks: %w", err)
+		return nil, nil, false, fmt.Errorf("retrieve networks: %w", err)
 	}
 	for _, net := range networks {
 		if net.Name == name {
+			found = true
 			refs[net.Reference().String()] = true
 		}
 	}
 
 	var dpgs []mo.DistributedVirtualPortgroup
 	if err := i.retrieve(ctx, []string{"DistributedVirtualPortgroup"}, []string{"name", "key"}, &dpgs); err != nil {
-		return nil, nil, fmt.Errorf("retrieve distributed portgroups: %w", err)
+		return nil, nil, false, fmt.Errorf("retrieve distributed portgroups: %w", err)
 	}
 	for _, pg := range dpgs {
 		if pg.Name == name {
+			found = true
 			refs[pg.Reference().String()] = true
 			if pg.Key != "" {
 				dpgKeys[pg.Key] = true
@@ -260,7 +287,22 @@ func (i *Inventory) networkRefsByName(ctx context.Context, name string) (map[str
 		}
 	}
 
-	return refs, dpgKeys, nil
+	var hosts []mo.HostSystem
+	if err := i.retrieve(ctx, []string{"HostSystem"}, []string{"name", "config.network"}, &hosts); err != nil {
+		return nil, nil, false, fmt.Errorf("retrieve host portgroups: %w", err)
+	}
+	for _, host := range hosts {
+		if host.Config == nil || host.Config.Network == nil {
+			continue
+		}
+		for _, pg := range host.Config.Network.Portgroup {
+			if pg.Spec.Name == name {
+				found = true
+			}
+		}
+	}
+
+	return refs, dpgKeys, found, nil
 }
 
 func vmOnAnyNetwork(vm mo.VirtualMachine, name string, refs map[string]bool, dpgKeys map[string]bool) bool {
@@ -306,11 +348,115 @@ func ethernetCard(device types.BaseVirtualDevice) (*types.VirtualEthernetCard, b
 	return card.GetVirtualEthernetCard(), true
 }
 
-func datastoreTransport(ds mo.Datastore) StorageTransport {
+func containsVMFS(datastores []mo.Datastore) bool {
+	for _, ds := range datastores {
+		if strings.EqualFold(ds.Summary.Type, "VMFS") {
+			return true
+		}
+		if _, ok := ds.Info.(*types.VmfsDatastoreInfo); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func datastoreTransport(ds mo.Datastore, storage []types.HostStorageDeviceInfo) StorageTransport {
 	if strings.EqualFold(ds.Summary.Type, "NFS") || strings.EqualFold(ds.Summary.Type, "NFS41") {
 		return TransportNFS
 	}
-	return ClassifyTransportDescriptor(fmt.Sprintf("%T %s", ds.Info, ds.Summary.Type))
+	info, ok := ds.Info.(*types.VmfsDatastoreInfo)
+	if !ok {
+		return TransportUnknown
+	}
+	return vmfsTransport(info, storage)
+}
+
+func vmfsTransport(info *types.VmfsDatastoreInfo, storage []types.HostStorageDeviceInfo) StorageTransport {
+	if info == nil || info.Vmfs == nil {
+		return TransportUnknown
+	}
+	for _, extent := range info.Vmfs.Extent {
+		if extent.DiskName == "" {
+			continue
+		}
+		for _, hostStorage := range storage {
+			if transport := vmfsExtentTransport(extent.DiskName, hostStorage); transport != TransportUnknown {
+				return transport
+			}
+		}
+	}
+	return TransportUnknown
+}
+
+func vmfsExtentTransport(diskName string, storage types.HostStorageDeviceInfo) StorageTransport {
+	lunKey := lunKeyByCanonicalName(diskName, storage.ScsiLun)
+	if lunKey == "" {
+		return TransportUnknown
+	}
+	adapterKey, targetDesc := adapterKeyByLUNKey(lunKey, storage.ScsiTopology)
+	if adapterKey != "" {
+		for _, hba := range storage.HostBusAdapter {
+			if hba == nil {
+				continue
+			}
+			base := hba.GetHostHostBusAdapter()
+			if base != nil && base.Key == adapterKey {
+				return ClassifyTransportDescriptor(hbaDescriptor(hba))
+			}
+		}
+	}
+	if targetDesc != "" {
+		return ClassifyTransportDescriptor(targetDesc)
+	}
+	return TransportUnknown
+}
+
+func lunKeyByCanonicalName(diskName string, luns []types.BaseScsiLun) string {
+	for _, baseLUN := range luns {
+		if baseLUN == nil {
+			continue
+		}
+		lun := baseLUN.GetScsiLun()
+		if lun != nil && strings.EqualFold(lun.CanonicalName, diskName) {
+			return lun.Key
+		}
+	}
+	return ""
+}
+
+func adapterKeyByLUNKey(lunKey string, topology *types.HostScsiTopology) (string, string) {
+	if topology == nil {
+		return "", ""
+	}
+	for _, adapter := range topology.Adapter {
+		for _, target := range adapter.Target {
+			for _, lun := range target.Lun {
+				if lun.ScsiLun == lunKey {
+					return adapter.Adapter, fmt.Sprintf("%T", target.Transport)
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+func hbaDescriptor(hba types.BaseHostHostBusAdapter) string {
+	if hba == nil {
+		return ""
+	}
+	base := hba.GetHostHostBusAdapter()
+	if base == nil {
+		return fmt.Sprintf("%T", hba)
+	}
+	return strings.Join([]string{
+		fmt.Sprintf("%T", hba),
+		base.Key,
+		base.Device,
+		base.Model,
+		base.Driver,
+		base.Pci,
+		base.StorageProtocol,
+	}, " ")
 }
 
 func ClassifyTransportDescriptor(desc string) StorageTransport {
@@ -421,12 +567,4 @@ func boundedUsed(used, total int32) int32 {
 		return total
 	}
 	return used
-}
-
-func retrieveRefs(ctx context.Context, client *vim25.Client, refs []types.ManagedObjectReference, props []string, dst any) error {
-	pc := property.DefaultCollector(client)
-	if err := pc.Retrieve(ctx, refs, props, dst); err != nil {
-		return fmt.Errorf("retrieve refs: %w", err)
-	}
-	return nil
 }
