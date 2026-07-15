@@ -19,6 +19,7 @@ bin/
 /gemma-4-31b/govmomi-cli
 /qwen-agentworld-35b-a3b/govmomi-cli-eval-prompt/govmomi-cli
 /ornith-1.0-397B/vsphere-cli
+/gpt-5.5/gpt55-vsphere-inventory
 
 # Vector DB / evaluation artifacts
 ruvector.db
