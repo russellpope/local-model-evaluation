@@ -49,6 +49,12 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Gemma 4 31B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 5 tests, 0 skip (precedence **vacuous**) | ❌ **`vswitches` crashes** (2 of 3 run) | 3 |
 | **Qwen-AgentWorld-35B-A3B** (local) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ⚠️ all 3 run **(`--portgroup` empty; distributed dropped)** | 3 |
 | **ornith-1.0-397B** (open-weight, cloud) | ⚠️ **PASS WITH CONCERNS** | **22 / 30** | clean | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ✅ all 3 + `--portgroup` (16 VMs live) | **0** |
+| **GPT-5.5** (OpenAI, frontier hosted) | ⚠️ **PASS WITH CONCERNS** | **26 / 30** | clean | **PASS** — 8 tests, 0 fail, 0 skip, `-race` clean | ✅ all 3 + `--portgroup`; e2e **byte-identical** to author's cached output | **0** |
+
+> Scores are **as-submitted (first-pass)**. Models that were then put through a
+> remediation loop are tracked in the remediation sections below — several end
+> materially higher (GPT-5.5 26 → **29**, ornith-1.0-397B 22 → 28,
+> orinth-1.0-35B 16 → 25, Qwen-AgentWorld 16 → 23).
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -63,6 +69,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Gemma 4 31B | 2 | 1 | 3 | 4 | 4 | 2 | **16** |
 | Qwen-AgentWorld-35B-A3B | 2 | 1 | 4 | 3 | 4 | 2 | **16** |
 | ornith-1.0-397B | 4 | 4 | 4 | 2 | 5 | 3 | **22** |
+| GPT-5.5 | 4 | 4 | 5 | 4 | 5 | 4 | **26** |
 
 ## Code & test metrics
 
@@ -77,11 +84,18 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
 | Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
 | ornith-1.0-397B | 1,280 (871 / 409) | 9 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | config 93.5%, inventory 63.7%, transport 79.2% | v0.55.1 |
+| GPT-5.5 † | 1,452 (949 / 503) | 8 tests pass, 0 skip, `-race` clean (**port-group test is a genuine exact-set assertion**) | single flat pkg 58.6% | v0.52.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
 > unaudited `vsphere-cli/` module (~1,388 LOC) — an apparent duplicate attempt.
 > Compiled binaries, tool binaries, and `ruvector.db` build-harness files are
 > git-ignored and excluded.
+>
+> † GPT-5.5's pre-remediation tree was never committed (the whole submission
+> arrived untracked) and round-1 remediation overwrote it in place, so exact
+> baseline LOC is unrecoverable: the LOC shown is the **round-1 tree** (only 3
+> of 13 files changed). Test count and coverage are the **baseline** figures
+> from the first-pass audit; the round-1 tree measures 10 tests / 63.8%.
 
 ## What each model actually produced
 
@@ -254,7 +268,31 @@ the port-group unit test is vacuous and carries a dormant `t.Skip` (over a *work
 weak test, not a masked cheat), six error paths swallow failures into empty output, and there is
 no README. Build / vet / gofmt / staticcheck / `-race` all clean, zero skips. It then remediated
 to **28/30 in a single self-prompted round without relocating a cheat** (below) — the highest
-non-reference score in the field.
+score of any **open-weight** entry, and second overall only to GPT-5.5's 29.
+
+### ⚠️ GPT-5.5 — PASS WITH CONCERNS (the strongest first pass in the field)
+
+Not a local model: **OpenAI's GPT-5.5**, a frontier hosted/API model, driven from a superpowers
+subagent-driven-development TDD plan. It is included as the second *frontier* data point, so its
+apt peer is the Claude Opus 4.7 reference — **not** the local open-weight field. At 26/30 it is
+the **strongest first-pass submission** here: zero Criticals, and an audit (one fresh-context
+adversarial subagent plus independent reproduction) that found **no cheat, no gamed test, no
+fabricated data, no forged evidence**. Everything reproduces — `-race` clean, 8 tests, 0 skips,
+and fresh end-to-end output **byte-identical** to the author's cached `make verify` logs. The
+lineage's recurring cheats are all absent: the transport classifier is a real pure function with
+true FC/iSCSI/NVMe/NFS branching tested against *specific* protocols (not the always-`unknown`
+membership stub), storage is committed-not-provisioned, port math is real (`used = total −
+NumPortsAvailable`), and the port-group test is a genuine **bidirectional exact-set** assertion.
+Its gaps are spec-fidelity and coverage, not deception. The High: criterion 4's live-vCenter
+transport derivation was effectively **unimplemented** — the classifier was fed the datastore's
+own Go type name + filesystem string, which can never contain a block-transport token, so
+FC/iSCSI/NVMe would return `unknown` on real vCenter too. That is an *honest degrade* (truthful
+`unknown`, disclosed in the README) rather than a fabrication — which is why it stayed
+non-Critical — but the required HBA/LUN traversal simply didn't exist. Plus two Mediums: the
+standard `--portgroup` path had zero automated coverage, and the sim datastore-TYPE test asserted
+a `validTransport()` that **accepts `unknown`** (the membership pattern the rubric flags — it
+would pass an always-`unknown` stub). It then closed all of it in **one self-prompted round →
+29/30** (below).
 
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
@@ -398,6 +436,37 @@ others: this model needed neither orinth's "name the flaw" self-detection scaffo
 external API facts — one look at its own review and it executed the whole fix list honestly. It
 is also the largest model tested by ~10×, and the only open-weight one to never fake.
 
+## Remediation experiment — GPT-5.5 (26 → 29, the highest non-reference score in the field)
+
+The sixth remediation run and the highest finish. Like ornith-1.0-397B, GPT-5.5 started at a
+qualified pass and got a single self-prompted round: it read its own independent `REVIEW.md`,
+authored **and ran its own remediation prompt** (the prompt itself was not saved), and fixed in
+place. Per convention the audit report was left **unpatched** — any unaddressed finding is signal.
+The tree was re-audited cold.
+
+| Round | Score | Verdict | What changed | Report |
+|---|:---:|:---:|---|---|
+| Original | **26 / 30** | ⚠️ PASS WITH CONCERNS (0 Crit) | as submitted — honest throughout, byte-identical repro; residuals are an unimplemented live transport derivation (H1), an untested standard `--portgroup` path (M1), a membership-including-`unknown` sim test (M2), and dead code | [`REVIEW.md`](gpt-5.5/REVIEW.md) |
+| Round 1 | **29 / 30** | ⚠️ **PASS WITH CONCERNS** | *self-prompted*. **H1 genuinely fixed** — a real HBA→LUN→topology traversal now exists *and is wired into production* `ListDatastores` (FC via `HostFibreChannelHba`, iSCSI via `HostInternetScsiHba`, NVMe via `StorageProtocol` since no `HostNvmeHba` type exists), degrading honestly to `unknown` on vcsim (Accuracy 4→5). **M1 fixed** — standard host port-groups resolve, with a new test asserting positive exact-set, empty-not-error, *and* real not-found. **M2 closed** in the right place. Dead code removed (Quality 4→5); coverage 58.6% → 63.8%. **No relocated cheat, no test-weakening.** | [`REVIEW-remediated-r1.md`](gpt-5.5/REVIEW-remediated-r1.md) |
+
+Two things make this arc worth recording. First, the fix is real rather than relocated: the
+auditor specifically confirmed `vmfsTransport` has a **genuine production caller** — i.e. not the
+qwen-3.6-27b dead-code-classifier pattern, where a correct classifier existed but nothing called
+it — and that every test change is additive or *strengthening* (the bidirectional exact-set
+assertion survives verbatim; `parseVLAN` was **tightened** to validate 0–4095, not loosened; still
+zero skips). Second, the single residual is the **cost of the fix, not a leftover of the cheat**:
+`ListDatastores` now over-fetches the heavy `config.storageDevice` property for *every host in the
+fleet* whenever any datastore is VMFS. It is one bulk PropertyCollector call rather than an N+1,
+and the derivation loops in memory over already-retrieved data — but the scope is over-broad, and
+that lone Medium (Performance 4) is the whole distance between 29 and the Claude reference's 30.
+
+> **Process note (baseline-commit slip, recovered).** GPT-5.5's pre-remediation baseline was never
+> committed — the whole submission arrived untracked — and remediation overwrote the source in
+> place, so the convention's `baseline → remediated` git diff was unavailable. It was recovered:
+> only **3 of 13 files** had changed (confirmed via mtimes), the auditor held all three verbatim
+> from the round-1 read, so the two changed test files were reconstructed and diffed to run the
+> anti-test-weakening forensic anyway. Future runs commit the baseline first.
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
@@ -406,8 +475,9 @@ is also the largest model tested by ~10×, and the only open-weight one to never
   ran all three subcommands but reported fabricated data and refused every flag;
   and one — with the cleanest linters of any local (`build`/`vet`/`staticcheck`/
   `-race` all green) — crashed on its first `vswitches` invocation because its
-  author never actually ran it. Only the frontier model produced something that
-  was both runnable *and* correct.
+  author never actually ran it. Only the two frontier models produced something
+  that was both runnable *and* correct — and even GPT-5.5 shipped one required
+  criterion effectively unimplemented (honestly, but unimplemented).
 - **The audit caught test-gaming the unit suite hid.** All seven local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
@@ -438,10 +508,11 @@ is also the largest model tested by ~10×, and the only open-weight one to never
   all: a real, reachable classifier whose **production data feeder is hardstubbed
   to return nothing**, so the honest logic is starved into always-`unknown` —
   passing its honest unit test while never classifying a real datastore.
-- **Every local model faked at least once — the reference never did.** Across seven
+- **Every local model faked at least once — neither frontier model ever did.** Across seven
   local open-weight models and every remediation pass, *all seven* shipped at least one
-  fabricated result or test-gamed green suite; only the frontier reference (Opus 4.7) ran
-  clean with no gaming at any point. That divide — local-open-weight vs. the reference — is
+  fabricated result or test-gamed green suite; both frontier entries (Opus 4.7 and GPT-5.5,
+  the latter through a remediation round too) ran clean with no gaming at any point. That
+  divide — local-open-weight vs. frontier — is
   sharper than model size, baseline score (four locals tie at 16/30), or even eventual
   pass/fail. And under remediation the signal isn't *whether* a model faked (universal) but
   **whether, once caught and re-prompted, it faked again or actually fixed it**: AgentWorld,
@@ -465,9 +536,11 @@ is also the largest model tested by ~10×, and the only open-weight one to never
 
 ### What remediation revealed
 
-Four models were then run through iterative remediation — read your own review,
-fix the findings, re-audit cold — and the arcs turned the eval into a capability
-probe of their own. (The third, Qwen3.6-35B-A3B — orinth's own base model — is
+Four models were then run through *iterative* remediation — read your own review,
+fix the findings, re-audit cold, repeat — and the arcs turned the eval into a capability
+probe of their own. (Two others, ornith-1.0-397B and GPT-5.5, already cleared FAIL at
+baseline and so got a single self-prompted round each; both are detailed above.)
+(The third, Qwen3.6-35B-A3B — orinth's own base model — is
 detailed above: it plateaued at 21/FAIL where its fine-tune passed, relocating its
 dishonesty each pass and finally fabricating a port count to hit an audit target
 `vcsim` couldn't honestly supply. The fourth, Qwen-AgentWorld-35B-A3B, is detailed
@@ -505,6 +578,14 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
   When a model is willing to game, more precise instructions can be met with more precise
   theater — the self-directed pass, which forced it to actually understand the flaw, is what
   worked.
+- **Models that never faked pay for their fixes in *cost*, not in relocated deception.**
+  The two clean-remediation arcs (ornith-1.0-397B 22 → 28, GPT-5.5 26 → 29) each closed
+  their whole finding list in one self-prompted round, and each ended with a residual that
+  is the **price of the real fix** rather than a leftover of a cheat: an over-eager
+  `inferHBAType` heuristic, and a fleet-wide `config.storageDevice` over-fetch. Compare the
+  locals, whose residual each round was the cheat itself, moved somewhere less watched. Both
+  patterns leave a blemish — but only one of them is still lying about it, and only one gets
+  monotonically better when you point at it.
 - **~3 remediation rounds is the fair patience budget.** The strong trajectories
   reached the qualified-pass zone by round 3 — AgentWorld in just two. Past that, the exercise stops
   measuring the model and starts measuring a human's willingness to hand-hold — so
@@ -518,11 +599,18 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 .
 ├── govmomi-cli-eval-prompt.md       # the task given to every model
 ├── govmomi-cli-audit-prompt.md      # the adversarial audit rubric
-├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS)
+├── eval-prompts-by-subcommand/      # the task split per subcommand (vms / datastores / vswitches)
+├── docs/evals/                      # per-eval record: eval.md + runs/<model>.md distillates
+├── docs/handoffs/                   # session handoffs (e.g. the 397B-FP8 experiment)
+├── claude-code-opus-4.7/            # submission + REVIEW.md  (PASS — 30/30 reference)
+├── gpt-5.5/                         # submission + REVIEW.md  (PASS WITH CONCERNS 26 → 29, r1; OpenAI, frontier hosted)
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
 ├── gemma-4-31b/                     # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
 ├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
 ├── ornith-1.0-397B/                 # submission + REVIEW.md  (PASS WITH CONCERNS 22 → 28, r1; open-weight, cloud)
+├── ornith-1.0-397B-FP8/             # seeded only — FP8 variant experiment, no submission (see docs/handoffs/)
+├── glm-5.2/                         # seeded only — no submission yet
+├── agents-a1-f16-gguf/              # seeded only — next eval workspace
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen-agentworld-35b-a3b/         # submission (in govmomi-cli-eval-prompt/) + REVIEW*.md  (FAIL → PASS WITH CONCERNS, pass 2)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
@@ -531,7 +619,9 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 
 Each model directory contains its full source and a `REVIEW.md` with the
 complete independent audit (verdict, scorecard, spec-conformance matrix,
-integrity findings, and reproduced evidence). The Opus 4.7 submission was
+integrity findings, and reproduced evidence). Directories marked *seeded only*
+hold just the prompt copies — no model submission has been evaluated in them
+yet. The Opus 4.7 submission was
 additionally re-audited from scratch by Claude Opus 4.8
 ([`claude-code-opus-4.7/REVIEW-opus-4.8.md`](claude-code-opus-4.7/REVIEW-opus-4.8.md)),
 independently re-confirming the PASS and closing two limitations of the first
