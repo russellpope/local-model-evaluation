@@ -61,6 +61,38 @@ before the run: plain completion returned exactly `WIRED`; tool call returned
 210 reasoning tokens to emit `WIRED`, 51 to decide on `ls`; expect reasoning to dominate token
 spend and wall-clock (same profile as ornith-1.0-397B).
 
+**Runtime incident — two reasoning-loop stalls requiring user restart (confirmed from transcript).**
+The model **stalled twice mid-run, each time caught in a reasoning loop that produced zero output**,
+and had to be manually restarted both times. Evidence from the opencode session store
+(`~/.local/share/opencode/opencode.db`, session `ses_098713d18ffeS5WtbavHHdmZM8`, 13:53:57 →
+21:21:02):
+
+| Time | Duration | Output tokens | Reasoning tokens | `finish_reason` |
+|---|---|---|---|---|
+| 14:30:02 | 22 min | **0** | **32,000** | `length` |
+| 15:45:43 | 26 min | **0** | **32,000** | `length` |
+
+Each stall reasoned until it hit a hard 32,000-token ceiling and emitted **no content and no tool
+call** — the signature of a reasoning loop, not a slow-but-progressing generation. User
+interventions are recorded as the only non-kickoff user messages: `"go"` at 15:01:29 (restarting
+after stall 1) and `"continue"` at 21:07:26 (stall 2 left the session idle for **4h 55m** —
+the model never recovered on its own).
+
+Aggregate for the session: **91,756 of 93,780 output tokens (97.8%) were reasoning tokens**, and
+**64,000 of those (70% of all reasoning) were spent inside the two dead stalls**, yielding zero
+output. 134 assistant messages, 3 with zero output. This corroborates the pre-run wire observation
+that the model is a heavy reasoner (210 reasoning tokens to emit `WIRED`) — at eval scale that
+tendency degenerated into non-termination twice.
+
+**Unresolved — do not treat as settled:** the exact round number `32,000` suggests a *configured*
+reasoning cap rather than a model-intrinsic limit; opencode's configured `limit.output` here is
+65,536, so 32,000 comes from somewhere else (LM Studio server default or model config — not yet
+identified). This matters for attribution: the *stall* (reasoning without emitting) is model
+behavior regardless, but whether the 32,000 ceiling is the harness's or the model's must be
+verified before the audit draws a conclusion from it. The restarts also mean this run is **not a
+clean unaided baseline** — two operator interventions are in the transcript and must be disclosed
+in the audit.
+
 **Open (fill after the run):** submission contents, `go build` / `go vet` on arrival, git-history
 forensic availability, driving-plan artifacts, wall-clock.
 
