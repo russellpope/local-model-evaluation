@@ -84,14 +84,47 @@ output. 134 assistant messages, 3 with zero output. This corroborates the pre-ru
 that the model is a heavy reasoner (210 reasoning tokens to emit `WIRED`) — at eval scale that
 tendency degenerated into non-termination twice.
 
-**Unresolved — do not treat as settled:** the exact round number `32,000` suggests a *configured*
-reasoning cap rather than a model-intrinsic limit; opencode's configured `limit.output` here is
-65,536, so 32,000 comes from somewhere else (LM Studio server default or model config — not yet
-identified). This matters for attribution: the *stall* (reasoning without emitting) is model
-behavior regardless, but whether the 32,000 ceiling is the harness's or the model's must be
-verified before the audit draws a conclusion from it. The restarts also mean this run is **not a
-clean unaided baseline** — two operator interventions are in the transcript and must be disclosed
-in the audit.
+**Attribution — RESOLVED (traced 2026-07-15).** The 32,000 ceiling is **opencode's, not the
+model's and not LM Studio's**. The server logs show the literal request body opencode sent:
+
+```
+[2026-07-15 13:53:57][DEBUG] Received request: POST to /v1/chat/completions with body {
+  "model": "internscience/agents-a1-f16-gguf/agents-a1-f16.gguf",
+  "max_tokens": 32000, "temperature": 0.6, "top_p": 0.95, "top_k": 20, ...
+```
+
+`max_tokens: 32000` on all 182 logged requests. Notably this is **not** the `limit.output: 65536`
+configured for this model in `~/.config/opencode/opencode.json` (edited 13:51:13, comfortably
+before the 13:53:57 session start, so the config was live) — **opencode ignores `limit.output` and
+sends 32,000 regardless**. It is also not from the models.dev registry: this model isn't in it, and
+no `lmstudio` registry entry uses 32,000. The same 32,000 was sent for `qwen-agentworld-35b-a3b`
+(272 logged requests), i.e. **the ceiling is a harness constant applied uniformly to every model in
+this cohort** — it does not distort the head-to-head.
+
+**The ceiling is uniform; hitting it is not.** Across every model ever driven through opencode on
+this machine, under the identical 32,000 cap:
+
+| Model | Assistant msgs | Zero-output stalls | Max reasoning tokens |
+|---|---|---|---|
+| **agents-a1-f16-gguf** | 192 | **2** | **32,000 (cap)** |
+| ornith-1.0-35b | 382 | 0 | 18,098 |
+| qwen3.6-35b-a3b | 529 | 0 | 5,004 |
+| gemma-4-31b | 282 | 0 | 3,321 |
+| qwen-agentworld-35b-a3b | 269 | 0 | 1,463 |
+| qwen3.6-27b | 185 | 0 | 826 |
+| Ornith-1.0-397B | 160 | 0 | 0 |
+
+**agents-a1 is the only model in the entire eval history to reach the cap** — the runner-up peaked
+at 18,098 (57% of it) and never truncated. So the cap did not cause the stall; agents-a1 is simply
+the only model that ever reasoned far enough to find it, twice, emitting nothing either time.
+
+*Precise claim, for the audit:* what is **proven** is that agents-a1 consumed 32,000 reasoning
+tokens with zero output tokens on two occasions, under a ceiling no other model approached. What is
+**not** proven is that it would never have terminated — the cap truncated it, so true
+non-termination is inferred, not observed. The audit should not claim more than the former.
+
+The restarts also mean this run is **not a clean unaided baseline** — two operator interventions
+are in the transcript and must be disclosed in the audit.
 
 **Open (fill after the run):** submission contents, `go build` / `go vet` on arrival, git-history
 forensic availability, driving-plan artifacts, wall-clock.
