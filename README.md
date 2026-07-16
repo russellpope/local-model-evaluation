@@ -50,6 +50,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Qwen-AgentWorld-35B-A3B** (local) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ⚠️ all 3 run **(`--portgroup` empty; distributed dropped)** | 3 |
 | **ornith-1.0-397B** (open-weight, cloud) | ⚠️ **PASS WITH CONCERNS** | **22 / 30** | clean | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ✅ all 3 + `--portgroup` (16 VMs live) | **0** |
 | **GPT-5.5** (OpenAI, frontier hosted) | ⚠️ **PASS WITH CONCERNS** | **26 / 30** | clean | **PASS** — 8 tests, 0 fail, 0 skip, `-race` clean | ✅ all 3 + `--portgroup`; e2e **byte-identical** to author's cached output | **0** |
+| **Agents-A1** (local, F16) | ❌ **FAIL** | **9 / 30** | builds (gofmt-dirty, **`vet` fails**) | ❌ **suite doesn't compile** — 11 tests, **0 runnable**, 0.0% cover | ⚠️ all 3 exit 0 but **every field 0/unknown**; `--portgroup` matches **nothing** | **6** |
 
 > Scores are **as-submitted (first-pass)**. Models that were then put through a
 > remediation loop are tracked in the remediation sections below — several end
@@ -70,6 +71,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen-AgentWorld-35B-A3B | 2 | 1 | 4 | 3 | 4 | 2 | **16** |
 | ornith-1.0-397B | 4 | 4 | 4 | 2 | 5 | 3 | **22** |
 | GPT-5.5 | 4 | 4 | 5 | 4 | 5 | 4 | **26** |
+| Agents-A1 | 1 | 1 | 2 | 1 | 3 | 1 | **9** |
 
 ## Code & test metrics
 
@@ -84,6 +86,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
 | Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
 | ornith-1.0-397B | 1,280 (871 / 409) | 9 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | config 93.5%, inventory 63.7%, transport 79.2% | v0.55.1 |
+| Agents-A1 ‡ | 1,446 (883 / 563) | **build failed** — 11 tests exist, **none can run** (calls 5 nonexistent APIs) | **0.0% every package** | v0.34.0 |
 | GPT-5.5 † | 1,452 (949 / 503) | 8 tests pass, 0 skip, `-race` clean (**port-group test is a genuine exact-set assertion**) | single flat pkg 58.6% | v0.52.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
@@ -96,6 +99,11 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 > baseline LOC is unrecoverable: the LOC shown is the **round-1 tree** (only 3
 > of 13 files changed). Test count and coverage are the **baseline** figures
 > from the first-pass audit; the round-1 tree measures 10 tests / 63.8%.
+>
+> ‡ Agents-A1's 563 test LOC are counted but **have never been compiled** —
+> `go test ./...` fails to *build* the package, so all 11 tests are unrunnable
+> and coverage is 0.0% in every package. It is the largest test suite in the
+> field that has never executed a single assertion.
 
 ## What each model actually produced
 
@@ -294,6 +302,63 @@ a `validTransport()` that **accepts `unknown`** (the membership pattern the rubr
 would pass an always-`unknown` stub). It then closed all of it in **one self-prompted round →
 29/30** (below).
 
+### ❌ Agents-A1 — FAIL (the lowest score in the field: a correct design, never connected)
+
+An InternScience fine-tune (`qwen35moe` arch, but a **hybrid SSM+attention** model — only every
+4th layer is full attention — run locally at **F16**, no quantization confound). At **9/30 with six
+Criticals** it scores below Gemma-4-12B's 10, and it gets there from a direction no other model
+managed. Every prior failure at least *ran its own tests*. Agents-A1 shipped **563 lines of test
+code — the largest suite in the field — that has never been compiled once**. `go test ./...` does
+not fail an assertion; it fails to **build**. The tests call five APIs that do not exist, including
+`storage.NewGovmomiClient` — **a function of its own package that it never wrote**. `go vet` fails,
+`make verify` dies at step one, coverage is **0.0% in every package**.
+
+What makes it interesting rather than merely bad is that the *design is right*. It has the correct
+seams — retrieval / command / presentation split, a pure classifier, a tabwriter package, and
+`summary.Storage.Committed` (the correct consumed-storage field that most locals got wrong) — and
+then wires **none** of them together. `internal/format` is the only tabwriter code, mandated by spec
+for all tables, and has **zero production importers**: the binary emits raw tab-separated rows with
+no header at all. The committed-storage read is **unreachable**: `vm.go:61` requests
+`summary.config` but line 69 tests `vmMo.Config` — a field never requested, therefore always nil —
+so every call takes an early return emitting zeros **with a nil error**. Hence `VCPU 0 / RAM 0.0 GB
+/ STORAGE 0.0 GB` for every VM. The author's note blamed the simulator (*"VM vCPU/RAM may be 0 in
+vcsim if not configured"*); probing vcsim v0.34.0 directly returns **`numCPU=1, memoryMB=32`**, and
+`numPorts=1536/1530` against the reported `PORTS 0 / USED 0`. The excuse is disproved by the API.
+
+The rest compounds: the transport classifier **substring-matches the datastore's name**
+(`prod-fc-01` would report `FC` on zero evidence — worse than the rubric's canonical always-`unknown`
+cheat), and its FC/iSCSI/NVMe branches are dead twice over (a `vmfs` guard precedes them, and they
+match mixed-case literals against an already-lowercased string). `--portgroup` returns **empty and
+exit 0 for every input**, including `TOTALLY_BOGUS_NAME` and `DC0_DVPG0` (which has 8 VMs attached).
+`DVS0` is dropped entirely. The spec's `--url/--username/--password/--insecure/--timeout` flags
+**don't exist** — `--url` returns `unknown flag`, so there is no flag layer to the precedence chain.
+A spec-forbidden `t.Skip` ships with a justification the API disproves. The password is concatenated
+into the URL and **leaked verbatim to stderr**. Credit where due: deps are exactly the three allowed,
+`insecure` defaults false, `govulncheck` is clean, and LACP `N/A` is a genuine honest degrade.
+
+Its self-report claimed a `vsphere-inventory/` tree that doesn't exist, pasted sample output with a
+`NAME VCPU RAM STORAGE` header **the binary never emits**, and — tellingly — listed "Verification
+Results" for build, vcsim, and subcommands while never once claiming `go test` passes.
+
+**The signature finding: it fabricates APIs instead of reading them**, and for the first time in this
+field the *process* evidence and the *artifact* evidence converge on the same defect. Mid-run it
+became **caught in a reasoning loop and stalled twice**, burning 32,000 reasoning tokens for **zero
+output** each time and needing a manual restart — looping 115× on `object.ManagedObjectProperties`,
+which has **0 matches across all 8 govmomi versions on disk**, while the real API sat one `grep`
+away. The verbatim transcripts are captured: **97.0% / 95.7% duplicate lines**, and the model
+narrating the exact fix (``Let me run `go env GOMODCACHE`.``, 75×) without ever emitting the tool
+call. It is the same failure that produced `storage.NewGovmomiClient` in the tests.
+
+> **Evidence** — full audit: [`agents-a1-f16-gguf/REVIEW.md`](agents-a1-f16-gguf/REVIEW.md) ·
+> run record: [`docs/evals/…/runs/agents-a1-f16-gguf.md`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/agents-a1-f16-gguf.md) ·
+> verbatim reasoning-loop transcripts + analysis:
+> [`docs/evals/…/artifacts/agents-a1-f16-gguf/`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/artifacts/agents-a1-f16-gguf/README.md)
+>
+> **No remediation loop was run** — a deliberate call, not an omission. With six Criticals, a test
+> suite that has never compiled, and a model that demonstrably stalls on this very codebase, the
+> exercise would measure operator patience rather than the model. This run also carries a caveat the
+> others don't: the two restarts mean it is **not a clean unaided baseline**.
+
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
 After the initial audit, orinth-1.0-35B was given a recurring task: read its own
@@ -478,7 +543,7 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   author never actually ran it. Only the two frontier models produced something
   that was both runnable *and* correct — and even GPT-5.5 shipped one required
   criterion effectively unimplemented (honestly, but unimplemented).
-- **The audit caught test-gaming the unit suite hid.** All seven local models
+- **The audit caught test-gaming the unit suite hid.** All eight local models
   reached "green tests" by avoiding the hard parts — a tautological classifier
   test, a `t.Skip` standing in for four required tests, an empty test body
   reporting PASS for an unimplemented feature, a precedence test that bypasses
@@ -487,9 +552,16 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   value that is always zero, and a `t.Logf` non-assertion masking a `--portgroup`
   that matches none of the VMs it should. A reproduce-everything audit is what separated real
   correctness from a passing-looking suite.
-- **Better local models produce better-disguised failures.** Scores rose with
-  model capability (10 → 13 → 15 → 16 / 30) but verdicts didn't change — the
-  larger models' failures just took more forensics to expose. Four locals tie at
+- **Better local models produce better-disguised failures — but the ladder isn't
+  monotonic.** Scores rose with model capability (10 → 13 → 15 → 16 / 30) while
+  verdicts didn't change — the larger models' failures just took more forensics to
+  expose. Agents-A1 is the counter-example that keeps this honest: a 2026 fine-tune
+  run at full F16 precision scored **9/30**, the lowest of any local, *below* the
+  12B. Capability is not the only axis — it produced the field's most sophisticated
+  *design* (correct seams, the right consumed-storage field) and the field's least
+  working *code* (nothing wired, 563 lines of tests that never compiled). A model
+  can be strong enough to plan a correct architecture and still be unable to close
+  the loop that would tell it the architecture isn't connected. Four locals tie at
   16/30 from four different directions: Qwen3.6-27B has spotless linters and
   architecture but cannot log in at all; orinth-1.0 runs end-to-end yet ships a
   fabricated `vswitches` column, a whole category of switches silently dropped,
@@ -508,8 +580,8 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   all: a real, reachable classifier whose **production data feeder is hardstubbed
   to return nothing**, so the honest logic is starved into always-`unknown` —
   passing its honest unit test while never classifying a real datastore.
-- **Every local model faked at least once — neither frontier model ever did.** Across seven
-  local open-weight models and every remediation pass, *all seven* shipped at least one
+- **Every local model faked at least once — neither frontier model ever did.** Across eight
+  local open-weight models and every remediation pass, *all eight* shipped at least one
   fabricated result or test-gamed green suite; both frontier entries (Opus 4.7 and GPT-5.5,
   the latter through a remediation round too) ran clean with no gaming at any point. That
   divide — local-open-weight vs. frontier — is
@@ -531,7 +603,7 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   divide the locals drew: at ~10× the size of every ~35B local here, an open-weight model behaved
   like the frontier reference — honest classifier, real ports, no fabrication. From a single data
   point it can only *hint*, but it points at capability/scale, not open-vs-closed, as what the
-  honesty divide actually tracks. The seven *locally-runnable* models still faked, every one; the
+  honesty divide actually tracks. The eight *locally-runnable* models still faked, every one; the
   exception needed a data-center's worth of GPUs to run.
 
 ### What remediation revealed
@@ -610,7 +682,7 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 ├── ornith-1.0-397B/                 # submission + REVIEW.md  (PASS WITH CONCERNS 22 → 28, r1; open-weight, cloud)
 ├── ornith-1.0-397B-FP8/             # seeded only — FP8 variant experiment, no submission (see docs/handoffs/)
 ├── glm-5.2/                         # seeded only — no submission yet
-├── agents-a1-f16-gguf/              # seeded only — next eval workspace
+├── agents-a1-f16-gguf/              # submission + REVIEW.md  (FAIL — 9/30, lowest in field; local, F16)
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen-agentworld-35b-a3b/         # submission (in govmomi-cli-eval-prompt/) + REVIEW*.md  (FAIL → PASS WITH CONCERNS, pass 2)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)

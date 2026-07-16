@@ -263,6 +263,53 @@ goroutines in app code and none of the failures are concurrency-related, but `-r
 fails, `gofmt` dirty (`internal/storage/datastore.go`), the sole tabwriter package is dead code, the
 classifier's branches are unreachable twice over, and README/config.yaml/build.log are all absent.
 
+### Evidence index
+
+Every claim above is reproducible from these artifacts. Nothing here rests on the author's word.
+
+| Evidence | Location | What it establishes |
+|---|---|---|
+| Full audit report (11 sections, 858 lines) | [`agents-a1-f16-gguf/REVIEW.md`](../../../../agents-a1-f16-gguf/REVIEW.md) | Every finding with `file:line` + command output; verdict rule applied |
+| **Verbatim reasoning-loop transcripts** (242 KB, unedited) + analysis | [`../artifacts/agents-a1-f16-gguf/`](../artifacts/agents-a1-f16-gguf/README.md) | The two stalls; 97.0% / 95.7% duplicate lines; the fabricated-API loop |
+| Stall 1 raw (126 KB) | [`../artifacts/agents-a1-f16-gguf/reasoning-loop-1-14-30-02.txt`](../artifacts/agents-a1-f16-gguf/reasoning-loop-1-14-30-02.txt) | 32,000 reasoning tokens → 0 output; ends `I'm stuck in a loop.` |
+| Stall 2 raw (116 KB) | [`../artifacts/agents-a1-f16-gguf/reasoning-loop-2-15-45-43.txt`](../artifacts/agents-a1-f16-gguf/reasoning-loop-2-15-45-43.txt) | ``Let me run `go env GOMODCACHE`.`` ×75, tool call never emitted |
+| opencode session store (read-only) | `~/.local/share/opencode/opencode.db`, session `ses_098713d18ffeS5WtbavHHdmZM8` | Stall timings, token counts, the two operator restarts, cross-model cap table |
+| LM Studio server logs | `~/.lmstudio/server-logs/2026-07/2026-07-15.*.log` | Literal request bodies proving `max_tokens: 32000` is opencode's, uniform across the cohort |
+
+**Reproduction commands** (all re-runnable from the workspace; every result below was observed, not
+inferred):
+
+```
+gofmt -l .                  -> internal/storage/datastore.go        (dirty)
+go build ./...              -> exit 0                               (excludes tests — how the
+                                                                     self-report's "✅ compiles" is
+                                                                     true and meaningless)
+go vet ./...                -> exit 1                               (tests package won't build)
+go test ./... -count=1      -> exit 1, FAIL [build failed]          (criterion 8 unmet)
+go test ./... -cover        -> 0.0% of statements, EVERY package
+make verify                 -> exit 2                               (dies at step one)
+./vsphere-inventory vms --url X        -> "unknown flag: --url"     (criterion 2: no flag layer)
+./vsphere-inventory vswitches --portgroup TOTALLY_BOGUS_NAME -> empty, exit 0   (criterion 6)
+```
+
+**Ground-truth probe** — the evidence that converts the author's excuse from unproven to disproved.
+Run against vcsim **v0.34.0**, the exact version the submission pins, via an isolated scratch module
+(the audited tree was never modified):
+
+```
+VMs   : numCPU=1  memoryMB=32  committed=234     <- submission prints VCPU 0 / RAM 0.0 / STORAGE 0.0
+vSwitch0: numPorts=1536  numPortsAvailable=1530  <- submission prints PORTS 0 / USED 0 (used s/b 6)
+DistributedVirtualSwitch count=1 names=DVS0      <- submission prints ZERO distributed rows
+host portgroups: VM Network, Management Network  <- submission prints only Management Network
+`object.ManagedObjectProperties` : 0 matches across all 8 cached govmomi versions   (the looped API)
+`func ManagedObjectProperties`   : 0 matches in v0.34.0; real API is
+                                   object/common.go:97 Properties(ctx, r, ps, dst) error
+```
+
+Header check via `od -c` (rules out a tabwriter-flush artifact): first byte of `vms` output is `D`
+of `DC0_C0_RP0_VM0` — **no header row exists**, and fields are raw `\t`-separated rather than
+tabwriter-aligned, consistent with `internal/format` having zero production importers.
+
 ## Compare
 
 **The lowest score in the field (9/30), below gemma-4-12b's 10 — and it earns that from a new
@@ -297,4 +344,21 @@ choose it. The understanding is visibly present in the seams; none of it is wire
 
 ## Remediate
 
+**No remediation round was run — a deliberate decision by the operator (2026-07-15), not an
+omission or an incomplete arc.** Rationale: with six Criticals, a test suite that has never
+compiled, required flags that don't exist, and a model that demonstrably stalls in reasoning loops
+*on this very codebase* (two stalls, two operator restarts — see Wire), a remediation round would
+measure operator patience rather than the model. The repo's own standard puts the fair patience
+budget at ~3 rounds for a submission that is *close*; this one would need the fix list to rebuild
+the retrieval layer, the test suite, the flag layer, and the classifier — i.e. the task.
+
+The audit's prioritized remediation list exists in `agents-a1-f16-gguf/REVIEW.md` §10 should this
+ever be revisited; it was **authored but never executed**, so no
+`REMEDIATION-round1-feedback.md` was written to the workspace and no remediation branch exists.
+
+**Final for this run: FAIL, 9 / 30, no arc.** `stage` stays `audited` rather than advancing to
+`remediating`/`rescored`.
+
 ## Rescore
+
+Not applicable — no remediation round was run (see Remediate). The as-submitted **9 / 30** is final.
