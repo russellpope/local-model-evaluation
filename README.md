@@ -3,9 +3,11 @@
 A head-to-head evaluation of code-generation models on a single, identical,
 non-trivial real-world task: build a working VMware vSphere inventory CLI in Go
 using `govmomi`. The goal is to see how locally-runnable open-weight models hold
-up against a frontier model (Claude Opus 4.7) on an **agentic** coding task —
-one where "the code compiles" is not the bar; the bar is **"it builds, runs
-against a simulator, and passes a hostile, reproduce-everything audit."**
+up against frontier models (Claude Opus 4.7 as the reference, plus GPT-5.5) on an
+**agentic** coding task — one where "the code compiles" is not the bar; the bar is
+**"it builds, runs against a simulator, and passes a hostile, reproduce-everything
+audit."** Eleven runs so far: eight locally-runnable open-weight models, one
+open-weight cloud model (ornith-1.0-397B), and the two frontier entries.
 
 Each model was given the same prompt and had to deliver complete, compiling,
 runnable source plus a hermetic unit-test suite. Each submission was then put
