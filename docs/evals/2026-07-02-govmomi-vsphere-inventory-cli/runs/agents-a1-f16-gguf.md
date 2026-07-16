@@ -118,10 +118,34 @@ this machine, under the identical 32,000 cap:
 at 18,098 (57% of it) and never truncated. So the cap did not cause the stall; agents-a1 is simply
 the only model that ever reasoned far enough to find it, twice, emitting nothing either time.
 
-*Precise claim, for the audit:* what is **proven** is that agents-a1 consumed 32,000 reasoning
-tokens with zero output tokens on two occasions, under a ceiling no other model approached. What is
-**not** proven is that it would never have terminated — the cap truncated it, so true
-non-termination is inferred, not observed. The audit should not claim more than the former.
+**Loop mechanism identified (verbatim transcripts captured).** Both stalls are near-perfect
+repetition — stall 1 is 2,167 non-empty lines of only **65 unique** (**97.0% duplicate**), stall 2
+is 3,241 lines of **138 unique** (**95.7%**). The loop is closed and self-sustaining: the model
+repeatedly *narrates* the action that would resolve its confusion (``Let me run `go env
+GOMODCACHE`.`` and `Then I'll look at the file.`, **75× each** in stall 2) but **never emits the
+tool call** — output tokens are 0, so no tool result returns, so **no new information enters the
+context**, so the next reasoning step faces identical state and reproduces identical text. It was
+aware and could not escape: `I think I need to stop looping and just implement it.` appears **113×**
+in stall 1, which ends `I'm stuck in a loop.` and is then cut mid-word by the cap.
+
+What it was stuck on is a **fabricated API**: `object.ManagedObjectProperties(...)`, looped 115×,
+which has **0 matches in govmomi v0.34.0 and 0 across all 8 cached govmomi versions**. (The v0.34.0
+reference is *correct* — the workspace pins it; the *method* is invented.) The real API is
+`object/common.go:97` `func (c Common) Properties(ctx, r, ps, dst) error`. Stall 1 claims *"I found
+this example:"* and reproduces an invented signature without ever reading the file; stall 2 opens
+knowing the method doesn't exist and resolves to check the module cache, then loops 26 minutes
+without doing so — while this same run had already driven 66 tool calls at that cache.
+
+Raw verbatim transcripts + full analysis:
+[`../artifacts/agents-a1-f16-gguf/`](../artifacts/agents-a1-f16-gguf/README.md).
+
+*Precise claim, for the audit:* **established** — 32,000 reasoning tokens for zero output on two
+occasions, 95–97% duplicate reasoning, no tool calls emitted during either stall, self-recognized
+and un-escaped, both still looping when truncated mid-sentence. **Not established** — that the loop
+is *provably* non-terminating; the cap truncated it, so an unbounded run was never observed. The
+mechanism (no tool call → no new input → identical state) makes continuation the strongly-supported
+expectation, and the operator watching live reported the same, but it stays an inference from a
+bounded observation. A single probe at a much higher `max_tokens` would settle it.
 
 The restarts also mean this run is **not a clean unaided baseline** — two operator interventions
 are in the transcript and must be disclosed in the audit.
