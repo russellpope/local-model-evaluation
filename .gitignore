@@ -8,6 +8,11 @@ vsphere-inventory
 # and ignore only its compiled binary (Makefile builds ./vsphere)
 !gemma-4-12b/vsphere-inventory/
 gemma-4-12b/vsphere-inventory/vsphere
+# …same collision for laguna-s-2.1: its *submission root* and its cmd/ package dir
+# are both named vsphere-inventory. Re-include both, ignore only the 29 MB binary.
+!laguna-s-2.1/vsphere-inventory/
+!laguna-s-2.1/vsphere-inventory/cmd/vsphere-inventory/
+laguna-s-2.1/vsphere-inventory/vsphere-inventory
 *.test
 *.exe
 *.out
