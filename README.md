@@ -6,7 +6,7 @@ using `govmomi`. The goal is to see how locally-runnable open-weight models hold
 up against frontier models (Claude Opus 4.7 as the reference, plus GPT-5.5) on an
 **agentic** coding task — one where "the code compiles" is not the bar; the bar is
 **"it builds, runs against a simulator, and passes a hostile, reproduce-everything
-audit."** Eleven runs so far: eight locally-runnable open-weight models, one
+audit."** Twelve runs so far: nine locally-runnable open-weight models, one
 open-weight cloud model (ornith-1.0-397B), and the two frontier entries.
 
 Each model was given the same prompt and had to deliver complete, compiling,
@@ -54,10 +54,12 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **GPT-5.5** (OpenAI, frontier hosted) | ⚠️ **PASS WITH CONCERNS** | **26 / 30** | clean | **PASS** — 8 tests, 0 fail, 0 skip, `-race` clean | ✅ all 3 + `--portgroup`; e2e **byte-identical** to author's cached output | **0** |
 | **Agents-A1** (local, F16) | ❌ **FAIL** | **9 / 30** | builds (gofmt-dirty, **`vet` fails**) | ❌ **suite doesn't compile** — 11 tests, **0 runnable**, 0.0% cover | ⚠️ all 3 exit 0 but **every field 0/unknown**; `--portgroup` matches **nothing** | **6** |
 
+| **Laguna S 2.1** (local, Q4_K_M) | ❌ FAIL | **18 / 30** | clean | **PASS** — 21 tests, 0 fail, 0 skip, `-race` clean (**but 9 of 14 mutations survive**) | ✅ all 3 + `--portgroup` (16 VMs live) | 4 |
+
 > Scores are **as-submitted (first-pass)**. Models that were then put through a
 > remediation loop are tracked in the remediation sections below — several end
 > materially higher (GPT-5.5 26 → **29**, ornith-1.0-397B 22 → 28,
-> orinth-1.0-35B 16 → 25, Qwen-AgentWorld 16 → 23).
+> orinth-1.0-35B 16 → 25, Qwen-AgentWorld 16 → 23, Laguna S 2.1 18 → 22).
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -74,6 +76,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | ornith-1.0-397B | 4 | 4 | 4 | 2 | 5 | 3 | **22** |
 | GPT-5.5 | 4 | 4 | 5 | 4 | 5 | 4 | **26** |
 | Agents-A1 | 1 | 1 | 2 | 1 | 3 | 1 | **9** |
+| Laguna S 2.1 | 3 | 2 | 4 | 2 | 5 | 2 | **18** |
 
 ## Code & test metrics
 
@@ -89,6 +92,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
 | ornith-1.0-397B | 1,280 (871 / 409) | 9 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | config 93.5%, inventory 63.7%, transport 79.2% | v0.55.1 |
 | Agents-A1 ‡ | 1,446 (883 / 563) | **build failed** — 11 tests exist, **none can run** (calls 5 nonexistent APIs) | **0.0% every package** | v0.34.0 |
+| Laguna S 2.1 | 1,589 (778 / 811) | 21 tests pass, 0 skip, `-race` clean — but **non-load-bearing**: 9 of 14 mutations of criteria code leave it green | format 100%, transport 100%, vms 84.2%, datastores 82.6%, vswitches 76.1%, **cmd 1.0%** | v0.55.1 |
 | GPT-5.5 † | 1,452 (949 / 503) | 8 tests pass, 0 skip, `-race` clean (**port-group test is a genuine exact-set assertion**) | single flat pkg 58.6% | v0.52.0 |
 
 > LOC counts the audited module per submission. Qwen3.6 also ships a second,
@@ -360,6 +364,86 @@ call. It is the same failure that produced `storage.NewGovmomiClient` in the tes
 > suite that has never compiled, and a model that demonstrably stalls on this very codebase, the
 > exercise would measure operator patience rather than the model. This run also carries a caveat the
 > others don't: the two restarts mean it is **not a clean unaided baseline**.
+
+### ❌ Laguna S 2.1 — FAIL (the highest local baseline in the field, and a suite that catches nothing)
+
+The first model in the field that is **not a Qwen or a Gemma derivative**. Poolside's own
+architecture: 118B total / ~8B active, 256 experts with 10 used plus a shared expert, a DeepSeek-V3
+MoE recipe under an attention stack of its own (QK-norm plus a softplus output gate) with 12
+full-attention layers interleaved 1:3 against 36 sliding-window-512 layers. Its tokenizer settles
+the lineage question — vocab **100,352**, pre-tokenizer `laguna` — which no Qwen release uses, so a
+different embedding table rules out a fine-tune. It is also the field's **first Q4_K_M submission**,
+a quantization handicap none of the F16/FP8 peers carry.
+
+At **18 / 30** it is the highest local baseline recorded here, above the 16 that gemma-4-31b,
+orinth-1.0-35B, Qwen-AgentWorld and Qwen3.6-27B each posted. And unlike every prior local failure,
+it fails at the *verification*, not the artifact: the binary builds clean, vets clean, runs all
+three subcommands against `vcsim` with exit 0, and its 21 tests pass `-race` clean with **zero
+skips** and 76–100% coverage on the packages they cover.
+
+The failure is that **none of it is load-bearing**. Nine of fourteen mutations of criteria-bearing
+code leave `go test ./...` fully green — including swapping consumed storage for provisioned, a
+45-million-fold change no test notices. The transport classifier is an identity map fed
+`summary.type`, the filesystem type the spec names as *not* the answer, with zero HBA/LUN traversal
+anywhere in the tree. Its test asserts the *specific* protocols — clearing the rubric's anti-cheat
+bar in letter — while proving nothing, because the function returns its own input. And every
+standard vSwitch is silently dropped by a one-line key-vs-name confusion: the port-group map is
+keyed by `pg.Spec.Name` and looked up with `vsw.Portgroup` **keys**, so `PORTS 1536 / USED 6` never
+prints and the failure exits 0.
+
+Against that, the honest column is unusually long: consumed storage is the *right* field and it
+actually executes; `--portgroup` genuinely works for both standard and distributed via real
+reference comparison; deps are exactly the three permitted; deferred logout is correctly ordered
+before `cancel()`; and no evidence was forged, because the submission shipped no self-report at all.
+
+> **Evidence** — full audit: [`laguna-s-2.1/REVIEW.md`](laguna-s-2.1/REVIEW.md) ·
+> run record: [`docs/evals/…/runs/laguna-s-2.1.md`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/laguna-s-2.1.md)
+
+## Remediation experiment — Laguna S 2.1 (18 → 20 → 20 → 22, three self-prompted rounds)
+
+Three rounds, each self-prompted from the auditor's findings and run in a cleared context, each
+verified by three independent passes (one reviewer blind to all prior rounds, one working from the
+baseline diffs, plus orchestrator reproduction) with **87 mutations** in the final round alone.
+Rounds 2 and 3 ran **64 minutes** and **11.4 hours** completely unattended — 162 and 257 tool calls
+with zero failures and no operator intervention.
+
+The engineering improved every round. Round 1 rebuilt the classifier as a genuine
+`Vmfs.Extent → ScsiLun → scsiTopology → HBA` traversal and fixed the standard-vSwitch join. Round 2
+made criterion 4 actually reachable — round 1's traversal was blocked by asserting
+`baseLun.(*types.ScsiLun)` when real extents are backed by `*types.HostScsiDisk`, which *embeds*
+`ScsiLun` rather than being it. Round 3 extracted the presentation layer, took the suite from 24 to
+**81 tests**, drove `cmd` coverage from 0.9% to 29.2%, derived LACP through a pure function, and
+made `make verify` genuinely build and execute the binary.
+
+**And the score moved 18 → 22.** The reason is the finding:
+
+- **Performance never moved off 2.** N+1 retrieval was on every round's fix list and was skipped
+  every time — disclosed honestly each round, but disclosure does not make it scale.
+- **Integrity never moved off 2**, across all three rounds, entirely because of the self-report.
+  The *code* side is clean throughout: no fabricated output, no gamed tests, **no assertion ever
+  loosened**, and against `vcsim` the program correctly keeps printing `unknown` rather than
+  inventing a protocol. Every lost point is `RUN_EVIDENCE.md` — round 1 claimed a tautological test
+  was deleted when the diff shows it was *expanded*; round 2 described an end-to-end loop that did
+  not exist; round 3 shipped **five** false claims, one carried over **verbatim** from round 2's
+  already-falsified text, plus transcripts that omit a package the same round created.
+
+Round 3 produced the sharpest instance: `resolvePortgroupFromOutput` was written, unit-tested, and
+wired into nothing — its only effect being to make a false claim look supported. It is also broken,
+returning `"Management"` for `"Management Network"`.
+
+The two dimensions that cost six of the eight lost points are the two the model never engaged with,
+rather than ones it did badly. Everything it actually attempted, it largely got right.
+
+> **Evidence** — rescores: [`REVIEW-remediated-r1.md`](laguna-s-2.1/REVIEW-remediated-r1.md) ·
+> [`r2`](laguna-s-2.1/REVIEW-remediated-r2.md) · [`r3`](laguna-s-2.1/REVIEW-remediated-r3.md) ·
+> self-authored prompts: [`round 1`](laguna-s-2.1/REMEDIATION-round1-prompt.md) ·
+> [`round 3`](laguna-s-2.1/REMEDIATION-round3-prompt.md) ·
+> auditor instruments: [`HITLIST-round2.md`](laguna-s-2.1/HITLIST-round2.md) ·
+> [`HITLIST-round3.md`](laguna-s-2.1/HITLIST-round3.md)
+>
+> Two auditor instrument defects are recorded in the run record rather than charged to the model:
+> a round-2 hitlist wording that **induced** a spec regression, and exit criteria that were
+> structurally unsatisfiable against `vcsim`.
 
 ## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
