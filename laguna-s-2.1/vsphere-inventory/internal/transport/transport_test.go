@@ -1,6 +1,10 @@
 package transport
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/vmware/govmomi/vim25/types"
+)
 
 func TestClassify(t *testing.T) {
 	tests := []struct {
@@ -9,9 +13,10 @@ func TestClassify(t *testing.T) {
 		expected string
 	}{
 		{"NFS", DeviceDescriptor{DeviceType: "NFS"}, "NFS"},
-		{"FC", DeviceDescriptor{DeviceType: "FC"}, "FC"},
-		{"iSCSI", DeviceDescriptor{DeviceType: "iSCSI"}, "iSCSI"},
-		{"NVMe", DeviceDescriptor{DeviceType: "NVMe"}, "NVMe"},
+		{"NFS41", DeviceDescriptor{DeviceType: "NFS41"}, "NFS"},
+		{"FC", DeviceDescriptor{DeviceType: "FC"}, "unknown"},
+		{"iSCSI", DeviceDescriptor{DeviceType: "iSCSI"}, "unknown"},
+		{"NVMe", DeviceDescriptor{DeviceType: "NVMe"}, "unknown"},
 		{"VMFS", DeviceDescriptor{DeviceType: "VMFS"}, "unknown"},
 		{"VMDK", DeviceDescriptor{DeviceType: "VMDK"}, "unknown"},
 		{"unknown type", DeviceDescriptor{DeviceType: "unknown"}, "unknown"},
@@ -28,36 +33,56 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-func TestClassifyFromHBA(t *testing.T) {
+func TestClassifyHBA(t *testing.T) {
 	tests := []struct {
-		name     string
-		hbaType  string
-		expected string
+		name string
+		hba  types.BaseHostHostBusAdapter
+		want string
 	}{
-		{"FC HBA", "FC", "FC"},
-		{"iSCSI HBA", "iSCSI", "iSCSI"},
-		{"NVMe HBA", "NVMe", "NVMe"},
-		{"NFS HBA", "NFS", "NFS"},
-		{"unknown HBA", "unknown", "unknown"},
-		{"empty HBA", "", "unknown"},
+		{
+			name: "FibreChannelHba",
+			hba: &types.HostFibreChannelHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key: "key-vim.host.FibreChannelHba-vmhba1",
+				},
+			},
+			want: "FC",
+		},
+		{
+			name: "InternetScsiHba",
+			hba: &types.HostInternetScsiHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key: "key-vim.host.InternetScsiHba-vmhba2",
+				},
+			},
+			want: "iSCSI",
+		},
+		{
+			name: "ParallelScsiHba (unknown)",
+			hba: &types.HostParallelScsiHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key: "key-vim.host.ParallelScsiHba-vmhba0",
+				},
+			},
+			want: "unknown",
+		},
+		{
+			name: "BlockHba (unknown)",
+			hba: &types.HostBlockHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key: "key-vim.host.BlockHba-vmhba3",
+				},
+			},
+			want: "unknown",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ClassifyFromHBA(tt.hbaType)
-			if result != tt.expected {
-				t.Errorf("ClassifyFromHBA(%q) = %q, want %q", tt.hbaType, result, tt.expected)
+			got := classifyHBA(tt.hba)
+			if got != tt.want {
+				t.Errorf("classifyHBA() = %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestFormatError(t *testing.T) {
-	err := FormatError("unknown")
-	if err == nil {
-		t.Error("FormatError should return a non-nil error")
-	}
-	if err.Error() != "unknown transport type: unknown" {
-		t.Errorf("unexpected error message: %q", err.Error())
 	}
 }

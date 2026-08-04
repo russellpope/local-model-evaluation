@@ -3,6 +3,7 @@ package vswitches
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
@@ -31,91 +32,91 @@ type VMInfo struct {
 
 func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error) {
 	finder := find.NewFinder(client)
-	dc, err := finder.DefaultDatacenter(ctx)
+
+	dcs, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
-		return nil, fmt.Errorf("finding default datacenter: %w", err)
+		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
-	finder.SetDatacenter(dc)
 
 	var result []SwitchInfo
 
-	hosts, err := finder.HostSystemList(ctx, "*")
-	if err != nil {
-		return nil, fmt.Errorf("listing host systems: %w", err)
-	}
+	for _, dc := range dcs {
+		finder.SetDatacenter(dc)
 
-	for _, host := range hosts {
-		var hostMo mo.HostSystem
-		err := host.Properties(ctx, host.Reference(), []string{
-			"name",
-			"config.network",
-		}, &hostMo)
+		hosts, err := finder.HostSystemList(ctx, "*")
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("listing host systems in datacenter %s: %w", dc.Name(), err)
 		}
 
-		if hostMo.Config == nil || hostMo.Config.Network == nil {
-			continue
-		}
-
-		networkInfo := hostMo.Config.Network
-
-		portGroupMap := make(map[string]types.HostPortGroup)
-		for _, pg := range networkInfo.Portgroup {
-			portGroupMap[pg.Spec.Name] = pg
-		}
-
-		for _, vsw := range networkInfo.Vswitch {
-			for _, pgName := range vsw.Portgroup {
-				pg, ok := portGroupMap[pgName]
-				if !ok {
-					continue
-				}
-
-				vlanID := "N/A"
-				if pg.Spec.VlanId != 0 {
-					vlanID = fmt.Sprintf("%d", pg.Spec.VlanId)
-				}
-
-				uplinks := "N/A"
-				if len(vsw.Pnic) > 0 {
-					uplinks = vsw.Pnic[0]
-				}
-
-				totalPorts := int(vsw.NumPorts)
-				usedPorts := totalPorts - int(vsw.NumPortsAvailable)
-				if usedPorts < 0 {
-					usedPorts = 0
-				}
-
-				result = append(result, SwitchInfo{
-					Name:       vsw.Name,
-					Type:       "standard",
-					Portgroup:  pg.Spec.Name,
-					VLAN:       vlanID,
-					Uplinks:    uplinks,
-					LACP:       "N/A",
-					TotalPorts: totalPorts,
-					UsedPorts:  usedPorts,
-				})
-			}
-		}
-	}
-
-	networks, err := finder.NetworkList(ctx, "*")
-	if err == nil {
-		for _, net := range networks {
-			ref := net.Reference()
-			common := object.NewCommon(client, ref)
-
-			var netMo mo.Network
-			err := common.Properties(ctx, ref, []string{
+		for _, host := range hosts {
+			var hostMo mo.HostSystem
+			err := host.Properties(ctx, host.Reference(), []string{
 				"name",
-				"vm",
-			}, &netMo)
+				"config.network",
+			}, &hostMo)
 			if err != nil {
+				return nil, fmt.Errorf("retrieving properties for host %s: %w", host.Name(), err)
+			}
+
+			if hostMo.Config == nil || hostMo.Config.Network == nil {
 				continue
 			}
+
+			networkInfo := hostMo.Config.Network
+
+			portGroupMap := make(map[string]types.HostPortGroup)
+			for _, pg := range networkInfo.Portgroup {
+				portGroupMap[pg.Key] = pg
+			}
+
+			for _, vsw := range networkInfo.Vswitch {
+				for _, pgKey := range vsw.Portgroup {
+					pg, ok := portGroupMap[pgKey]
+					if !ok {
+						continue
+					}
+
+					vlanID := "0"
+					if pg.Spec.VlanId != 0 {
+						vlanID = fmt.Sprintf("%d", pg.Spec.VlanId)
+					}
+
+					var uplinks []string
+					for _, pnic := range vsw.Pnic {
+						uplinks = append(uplinks, strings.TrimPrefix(pnic, "key-vnic-"))
+					}
+					uplinkStr := "N/A"
+					if len(uplinks) > 0 {
+						uplinkStr = strings.Join(uplinks, ",")
+					}
+
+					totalPorts := int(vsw.NumPorts)
+					usedPorts := totalPorts - int(vsw.NumPortsAvailable)
+					if usedPorts < 0 {
+						usedPorts = 0
+					}
+
+					result = append(result, SwitchInfo{
+						Name:       vsw.Name,
+						Type:       "standard",
+						Portgroup:  pg.Spec.Name,
+						VLAN:       vlanID,
+						Uplinks:    uplinkStr,
+						LACP:       "disabled",
+						TotalPorts: totalPorts,
+						UsedPorts:  usedPorts,
+					})
+				}
+			}
+		}
+
+		networks, err := finder.NetworkList(ctx, "*")
+		if err != nil {
+			return nil, fmt.Errorf("listing networks in datacenter %s: %w", dc.Name(), err)
+		}
+
+		for _, net := range networks {
+			ref := net.Reference()
 
 			switch net.(type) {
 			case *object.DistributedVirtualPortgroup:
@@ -126,19 +127,26 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 					"config",
 				}, &dvpMo)
 				if err != nil {
-					continue
+					return nil, fmt.Errorf("retrieving properties for distributed portgroup: %w", err)
 				}
 
-				vlanID := "N/A"
+				vlanID := "0"
 				if dvpMo.Config.DefaultPortConfig != nil {
-					vlanID = "N/A"
+					vlanID = resolveVlanID(dvpMo.Config.DefaultPortConfig)
 				}
 
 				totalPorts := int(dvpMo.Config.NumPorts)
+
 				usedPorts := 0
+				dvsName := "N/A"
+				if dvpMo.Config.DistributedVirtualSwitch != nil {
+					dvsRef := *dvpMo.Config.DistributedVirtualSwitch
+					dvsName = resolveDVSName(ctx, client, dvsRef)
+					usedPorts = fetchDVPortCount(ctx, client, dvsRef, dvpMo.Config.Key)
+				}
 
 				result = append(result, SwitchInfo{
-					Name:       "N/A",
+					Name:       dvsName,
 					Type:       "distributed",
 					Portgroup:  dvpMo.Name,
 					VLAN:       vlanID,
@@ -154,63 +162,139 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 	return result, nil
 }
 
+func resolveVlanID(portConfig types.BaseDVPortSetting) string {
+	dvsPortSetting, ok := portConfig.(*types.VMwareDVSPortSetting)
+	if !ok {
+		return "0"
+	}
+	if dvsPortSetting.Vlan == nil {
+		return "0"
+	}
+	switch vlan := dvsPortSetting.Vlan.(type) {
+	case *types.VmwareDistributedVirtualSwitchVlanIdSpec:
+		if vlan.VlanId == 0 {
+			return "0"
+		}
+		return fmt.Sprintf("%d", vlan.VlanId)
+	case *types.VmwareDistributedVirtualSwitchTrunkVlanSpec:
+		if len(vlan.VlanId) == 0 {
+			return "0"
+		}
+		var ranges []string
+		for _, r := range vlan.VlanId {
+			ranges = append(ranges, fmt.Sprintf("%d-%d", r.Start, r.End))
+		}
+		return strings.Join(ranges, ",")
+	case *types.VmwareDistributedVirtualSwitchPvlanSpec:
+		if vlan.PvlanId == 0 {
+			return "0"
+		}
+		return fmt.Sprintf("pvlan:%d", vlan.PvlanId)
+	default:
+		return "0"
+	}
+}
+
+func fetchDVPortCount(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference, portgroupKey string) int {
+	dvs := object.NewDistributedVirtualSwitch(client, dvsRef)
+	criteria := &types.DistributedVirtualSwitchPortCriteria{
+		PortgroupKey: []string{portgroupKey},
+		Inside:       types.NewBool(true),
+	}
+	ports, err := dvs.FetchDVPorts(ctx, criteria)
+	if err != nil {
+		return 0
+	}
+	return len(ports)
+}
+
+func resolveDVSName(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference) string {
+	dvs := object.NewDistributedVirtualSwitch(client, dvsRef)
+	name, err := dvs.ObjectName(ctx)
+	if err != nil {
+		return "N/A"
+	}
+	return name
+}
+
 func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName string) ([]VMInfo, error) {
 	finder := find.NewFinder(client)
-	dc, err := finder.DefaultDatacenter(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("finding default datacenter: %w", err)
-	}
-	finder.SetDatacenter(dc)
 
-	pg, err := finder.Network(ctx, portgroupName)
+	dcs, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
-		return nil, fmt.Errorf("finding port group %q: %w", portgroupName, err)
+		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
-	pgRef := pg.Reference()
+	var pgRef types.ManagedObjectReference
+	var found bool
+	for _, dc := range dcs {
+		finder.SetDatacenter(dc)
 
-	vms, err := finder.VirtualMachineList(ctx, "*")
-	if err != nil {
-		return nil, fmt.Errorf("listing virtual machines: %w", err)
+		pg, err := finder.Network(ctx, portgroupName)
+		if err == nil {
+			pgRef = pg.Reference()
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("finding port group %q: not found", portgroupName)
 	}
 
 	var result []VMInfo
-	for _, vm := range vms {
-		var vmMo mo.VirtualMachine
-		err := vm.Properties(ctx, vm.Reference(), []string{
-			"name",
-			"network",
-			"config.hardware.numCPU",
-			"config.hardware.memoryMB",
-			"summary.storage.committed",
-		}, &vmMo)
+	for _, dc := range dcs {
+		finder.SetDatacenter(dc)
+
+		vms, err := finder.VirtualMachineList(ctx, "*")
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("listing virtual machines in datacenter %s: %w", dc.Name(), err)
 		}
 
-		connected := false
-		for _, netRef := range vmMo.Network {
-			if netRef == pgRef {
-				connected = true
-				break
+		for _, vm := range vms {
+			var vmMo mo.VirtualMachine
+			err := vm.Properties(ctx, vm.Reference(), []string{
+				"name",
+				"network",
+				"config.hardware.numCPU",
+				"config.hardware.memoryMB",
+				"summary.storage.committed",
+			}, &vmMo)
+			if err != nil {
+				return nil, fmt.Errorf("retrieving properties for VM %s: %w", vm.Name(), err)
 			}
-		}
 
-		if !connected {
-			continue
-		}
+			connected := false
+			for _, netRef := range vmMo.Network {
+				if netRef == pgRef {
+					connected = true
+					break
+				}
+			}
 
-		var committed int64
-		if vmMo.Summary.Storage != nil {
-			committed = vmMo.Summary.Storage.Committed
-		}
+			if !connected {
+				continue
+			}
 
-		result = append(result, VMInfo{
-			Name:         vmMo.Name,
-			VCPU:         int(vmMo.Config.Hardware.NumCPU),
-			RAMMB:        int(vmMo.Config.Hardware.MemoryMB),
-			StorageBytes: committed,
-		})
+			var committed int64
+			if vmMo.Summary.Storage != nil {
+				committed = vmMo.Summary.Storage.Committed
+			}
+
+			var vcpu int
+			var ramMB int
+			if vmMo.Config != nil {
+				vcpu = int(vmMo.Config.Hardware.NumCPU)
+				ramMB = int(vmMo.Config.Hardware.MemoryMB)
+			}
+
+			result = append(result, VMInfo{
+				Name:         vmMo.Name,
+				VCPU:         vcpu,
+				RAMMB:        ramMB,
+				StorageBytes: committed,
+			})
+		}
 	}
 
 	return result, nil

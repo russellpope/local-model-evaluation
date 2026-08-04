@@ -19,7 +19,7 @@ func TestBytes(t *testing.T) {
 		{"one GiB", 1073741824, "1.0 GiB"},
 		{"one TiB", 1099511627776, "1.0 TiB"},
 		{"one PiB", 1125899906842624, "1.0 PiB"},
-		{"large value", 1152921504606846976, "1024.0 EiB"},
+		{"large value", 1152921504606846976, "1.0 EiB"},
 	}
 
 	for _, tt := range tests {

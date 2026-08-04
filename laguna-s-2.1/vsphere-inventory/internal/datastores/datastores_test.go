@@ -28,8 +28,8 @@ func TestGetDatastores(t *testing.T) {
 				t.Error("Datastore name should not be empty")
 			}
 
-			if ds.UsedBytes+ds.AvailableBytes > ds.CapacityBytes {
-				t.Errorf("Datastore %s: used + available (%d + %d) > capacity (%d)",
+			if ds.UsedBytes+ds.AvailableBytes != ds.CapacityBytes {
+				t.Errorf("Datastore %s: used + available (%d + %d) != capacity (%d)",
 					ds.Name, ds.UsedBytes, ds.AvailableBytes, ds.CapacityBytes)
 			}
 
@@ -39,10 +39,10 @@ func TestGetDatastores(t *testing.T) {
 			}
 
 			validTypes := map[string]bool{
-				"FC":     true,
-				"iSCSI":  true,
-				"NVMe":   true,
-				"NFS":    true,
+				"FC":      true,
+				"iSCSI":   true,
+				"NVMe":    true,
+				"NFS":     true,
 				"unknown": true,
 			}
 			if !validTypes[ds.Type] {

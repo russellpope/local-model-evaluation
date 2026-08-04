@@ -2,14 +2,14 @@ package vswitches
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
-
-	"github.com/vmware/govmomi/simulator"
 )
 
 func TestGetSwitches(t *testing.T) {
@@ -29,6 +29,7 @@ func TestGetSwitches(t *testing.T) {
 			t.Fatal("GetSwitches() should return at least one switch")
 		}
 
+		hasStandard := false
 		for _, sw := range switches {
 			if sw.Portgroup == "" {
 				t.Error("Portgroup should not be empty")
@@ -55,6 +56,20 @@ func TestGetSwitches(t *testing.T) {
 			if !validTypes[sw.Type] {
 				t.Errorf("Switch %s/%s: type %q is not valid", sw.Name, sw.Portgroup, sw.Type)
 			}
+
+			if sw.Type == "standard" {
+				hasStandard = true
+				if sw.TotalPorts != 1536 {
+					t.Errorf("Standard switch %s: TotalPorts = %d, want 1536", sw.Name, sw.TotalPorts)
+				}
+				if sw.UsedPorts != 6 {
+					t.Errorf("Standard switch %s: UsedPorts = %d, want 6", sw.Name, sw.UsedPorts)
+				}
+			}
+		}
+
+		if !hasStandard {
+			t.Error("GetSwitches() should return at least one standard switch")
 		}
 	}, model)
 }
@@ -122,6 +137,10 @@ func TestGetVMsByPortgroup(t *testing.T) {
 		if len(vmsList) == 0 {
 			t.Fatalf("GetVMsByPortgroup(%q) should return at least one VM", portgroupName)
 		}
+
+		sort.Slice(vmsList, func(i, j int) bool {
+			return vmsList[i].Name < vmsList[j].Name
+		})
 
 		for _, vm := range vmsList {
 			if vm.Name == "" {

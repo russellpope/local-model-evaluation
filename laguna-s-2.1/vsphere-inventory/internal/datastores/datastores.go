@@ -20,51 +20,54 @@ type DatastoreInfo struct {
 
 func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, error) {
 	finder := find.NewFinder(client)
-	dc, err := finder.DefaultDatacenter(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("finding default datacenter: %w", err)
-	}
-	finder.SetDatacenter(dc)
 
-	datastores, err := finder.DatastoreList(ctx, "*")
+	dcs, err := finder.DatacenterList(ctx, "*")
 	if err != nil {
-		return nil, fmt.Errorf("listing datastores: %w", err)
+		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
 	var result []DatastoreInfo
-	for _, ds := range datastores {
-		var dsMo mo.Datastore
-		err := ds.Properties(ctx, ds.Reference(), []string{
-			"name",
-			"summary.type",
-			"summary.capacity",
-			"summary.freeSpace",
-			"summary.uncommitted",
-		}, &dsMo)
+	for _, dc := range dcs {
+		finder.SetDatacenter(dc)
+
+		datastores, err := finder.DatastoreList(ctx, "*")
 		if err != nil {
-			return nil, fmt.Errorf("retrieving properties for datastore %s: %w", ds.Name(), err)
+			return nil, fmt.Errorf("listing datastores in datacenter %s: %w", dc.Name(), err)
 		}
 
-		capacity := dsMo.Summary.Capacity
-		freeSpace := dsMo.Summary.FreeSpace
-		uncommitted := dsMo.Summary.Uncommitted
+		for _, ds := range datastores {
+			var dsMo mo.Datastore
+			err := ds.Properties(ctx, ds.Reference(), []string{
+				"name",
+				"summary.type",
+				"summary.capacity",
+				"summary.freeSpace",
+				"summary.uncommitted",
+				"info",
+				"host",
+			}, &dsMo)
+			if err != nil {
+				return nil, fmt.Errorf("retrieving properties for datastore %s: %w", ds.Name(), err)
+			}
 
-		used := capacity - freeSpace
-		if uncommitted > 0 && uncommitted > used {
-			used = uncommitted
+			capacity := dsMo.Summary.Capacity
+			freeSpace := dsMo.Summary.FreeSpace
+
+			used := capacity - freeSpace
+
+			transportType, err := transport.ClassifyDatastore(ctx, client, dsMo)
+			if err != nil {
+				transportType = "unknown"
+			}
+
+			result = append(result, DatastoreInfo{
+				Name:           dsMo.Name,
+				Type:           transportType,
+				UsedBytes:      used,
+				AvailableBytes: freeSpace,
+				CapacityBytes:  capacity,
+			})
 		}
-
-		transportType := transport.Classify(transport.DeviceDescriptor{
-			DeviceType: dsMo.Summary.Type,
-		})
-
-		result = append(result, DatastoreInfo{
-			Name:           dsMo.Name,
-			Type:           transportType,
-			UsedBytes:      used,
-			AvailableBytes: freeSpace,
-			CapacityBytes:  capacity,
-		})
 	}
 
 	return result, nil

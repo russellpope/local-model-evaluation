@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 
 	"github.com/vmware/govmomi/session"
@@ -20,11 +21,7 @@ func NewClient(ctx context.Context, c *Config) (*vim25.Client, error) {
 		u.Scheme = "https"
 	}
 	if u.Port() == "" {
-		u.Host = u.Host + ":443"
-	}
-
-	if c.Username != "" && c.Password != "" {
-		u.User = url.UserPassword(c.Username, c.Password)
+		u.Host = net.JoinHostPort(u.Hostname(), "443")
 	}
 
 	soapClient := soap.NewClient(u, c.Insecure)
@@ -35,7 +32,7 @@ func NewClient(ctx context.Context, c *Config) (*vim25.Client, error) {
 
 	if c.Username != "" && c.Password != "" {
 		sm := session.NewManager(client)
-		if err := sm.Login(ctx, u.User); err != nil {
+		if err := sm.Login(ctx, url.UserPassword(c.Username, c.Password)); err != nil {
 			return nil, fmt.Errorf("authenticating to vSphere: %w", err)
 		}
 	}

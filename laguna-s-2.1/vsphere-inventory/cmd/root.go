@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -15,6 +17,10 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() error {
+	return ExecuteContext(context.Background())
+}
+
+func ExecuteContext(ctx context.Context) error {
 	cfg = config.New()
 
 	viper.SetEnvPrefix("VSPHERE")
@@ -40,6 +46,7 @@ func Execute() error {
 	rootCmd.AddCommand(datastoresCmd)
 	rootCmd.AddCommand(vswitchesCmd)
 
+	rootCmd.SetContext(ctx)
 	return rootCmd.Execute()
 }
 

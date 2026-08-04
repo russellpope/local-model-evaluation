@@ -14,7 +14,7 @@ func Bytes(b int64) string {
 	}
 	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB"}
 	if exp >= len(units) {
-		return fmt.Sprintf("%.1f EiB", float64(b)/float64(div)*1024)
+		return fmt.Sprintf("%.1f EiB", float64(b)/float64(div))
 	}
 	return fmt.Sprintf("%.1f %s", float64(b)/float64(div), units[exp])
 }

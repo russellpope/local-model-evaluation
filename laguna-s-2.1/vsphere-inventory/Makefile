@@ -15,6 +15,9 @@ fmt:
 	gofmt -l .
 
 verify: vet test
+	@echo "Running gofmt check..."
+	@if [ -n "$$(gofmt -l .)" ]; then echo "gofmt found issues:"; gofmt -l .; exit 1; fi
+	@echo "gofmt check passed."
 	@echo "Running build..."
 	go build -o $(BINARY) ./cmd/vsphere-inventory
 	@echo "Build successful."

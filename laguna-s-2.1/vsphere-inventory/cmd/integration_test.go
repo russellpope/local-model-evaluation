@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -15,8 +15,11 @@ import (
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vms"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vswitches"
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/mo"
 )
 
 func TestVMsCommandAgainstSimulator(t *testing.T) {
@@ -181,31 +184,72 @@ func TestVSwitchesPortgroupCommandAgainstSimulator(t *testing.T) {
 	model.Portgroup = 2
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, "DC0_DVPG0")
+		finder := find.NewFinder(c)
+		dc, err := finder.DefaultDatacenter(ctx)
+		if err != nil {
+			t.Fatalf("finding default datacenter: %v", err)
+		}
+		finder.SetDatacenter(dc)
+
+		vms, err := finder.VirtualMachineList(ctx, "*")
+		if err != nil {
+			t.Fatalf("finding VMs: %v", err)
+		}
+
+		if len(vms) == 0 {
+			t.Fatal("no VMs found in simulator")
+		}
+
+		var portgroupName string
+		for _, vm := range vms {
+			var vmMo mo.VirtualMachine
+			err := vm.Properties(ctx, vm.Reference(), []string{
+				"name",
+				"network",
+			}, &vmMo)
+			if err != nil {
+				continue
+			}
+
+			if len(vmMo.Network) > 0 {
+				netRef := vmMo.Network[0]
+				common := object.NewCommon(c, netRef)
+
+				var netMo mo.Network
+				err := common.Properties(ctx, netRef, []string{"name"}, &netMo)
+				if err != nil {
+					continue
+				}
+
+				portgroupName = netMo.Name
+				break
+			}
+		}
+
+		if portgroupName == "" {
+			t.Fatal("no port group found for any VM")
+		}
+
+		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, portgroupName)
 		if err != nil {
 			t.Fatalf("GetVMsByPortgroup() error = %v", err)
 		}
 
 		if len(vmsList) == 0 {
-			t.Error("GetVMsByPortgroup() should return at least one VM")
+			t.Errorf("GetVMsByPortgroup(%q) should return at least one VM", portgroupName)
 		}
 
 		sort.Slice(vmsList, func(i, j int) bool {
 			return vmsList[i].Name < vmsList[j].Name
 		})
 
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tVCPU\tRAM\tSTORAGE")
 		for _, vm := range vmsList {
-			ramGB := float64(vm.RAMMB) / 1024.0
-			fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.Bytes(vm.StorageBytes))
-		}
-		w.Flush()
-
-		output := buf.String()
-		if !strings.Contains(output, "NAME") {
-			t.Error("output should contain header")
+			if vm.VCPU <= 0 {
+				t.Errorf("VM %s: VCPU = %d, want > 0", vm.Name, vm.VCPU)
+			}
+			if vm.RAMMB <= 0 {
+				t.Errorf("VM %s: RAMMB = %d, want > 0", vm.Name, vm.RAMMB)
+			}
 		}
 	}, model)
 }
@@ -219,6 +263,12 @@ func TestConfigPrecedenceFlagOverEnv(t *testing.T) {
 
 	if cfg.URL != "https://flag.lab/sdk" {
 		t.Error("flag value should be used")
+	}
+	if cfg.Username != "flaguser" {
+		t.Error("flag username should be used")
+	}
+	if cfg.Password != "flagpass" {
+		t.Error("flag password should be used")
 	}
 }
 
