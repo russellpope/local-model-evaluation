@@ -665,3 +665,45 @@ either. (3) An arithmetic error in the round-1 report — "8 of 13" where the ta
 has been corrected in that report, the hitlist and this record; no verdict or score changes.
 
 **Arc: 18 → 20 → 20.** A round that moved real work between columns without moving the number.
+
+---
+
+**Round 3 — instrument committed at `6123fa9`, not yet run.**
+[`laguna-s-2.1/HITLIST-round3.md`](../../../../laguna-s-2.1/HITLIST-round3.md). Two instrument
+defects from round 2 are corrected in it and labelled as the auditor's: §1.3 now states the
+degrade requirement in full (per-row `unknown`, reason to stderr, keep walking, hard-fail only on
+connect/auth/transport), and §5 withdraws the two unsatisfiable exit criteria with an explicit note
+that the model was not charged for them. The twelve new exit-criterion mutations all target the
+**wiring and presentation** layer — the diagnosed shape of the remaining gap — with a standing
+instruction that assertions be derived from data the test establishes rather than literals that
+happen to match simulator defaults, which is what made round 2's criterion-6 assertion vacuous.
+
+**Methodology note — the arm is less hitlist-only than designed.** At 18:26:29 in round 2 the model
+read [`REVIEW-remediated-r1.md`](../../../../laguna-s-2.1/REVIEW-remediated-r1.md) — the full
+round-1 rescore — without the hitlist pointing it there. It locates prior audit reports in the
+workspace on its own. This does not invalidate the round (the reports describe the model's own
+code, and the hitlist is a strict subset of their findings), but the round-3 workspace now holds
+*three* such reports, so the model is effectively self-prompting from the full audit history rather
+than from the curated hitlist alone. Recorded so the arm is not described as narrower than it is.
+
+**`preserveThinking` — hypothesis stated before round 3 runs, so it cannot be fitted afterwards.**
+All three rounds ran with LM Studio's `preserveThinking` **off**, matching the whole cohort, so the
+model's own turn-by-turn reasoning is stripped from later context. Round 2's self-report was
+written in a **single `write` call at 19:07:51** — 48 minutes and ~140 tool calls into the round,
+never edited afterwards. That gives the recurring false-claim failure a specific mechanism: the
+*intent* ("delete the tautological tests", straight from the hitlist) persists in context while the
+*correction* ("I rewrote that one instead") lived in reasoning that was discarded. Poolside's README
+advertises "interleaved and preserved thinking across tool calls" as a headline capability.
+
+Against the hypothesis: the same document discloses ContainerView accurately and describes six
+other items correctly — it is not uniformly amnesiac — and every false claim was checkable in the
+tree with one `grep`. That reads as verification discipline, not memory.
+
+**Round 3 discriminates for free.** Its §1.1 explicitly requires every sentence of the self-report
+to be checkable against the tree. If the report comes back accurate under that instruction, recall
+was not the constraint and `preserveThinking` solves a problem this run does not have. If it is
+still wrong *despite* the instruction, the hypothesis becomes worth testing directly — and the
+setup for a clean A/B already exists: identical tree at `6123fa9`, identical instrument, one
+variable. Changing it *now* would confound round 3 against both its own arc and the eleven other
+models in the field, for the same reason the cohort sampling preset was kept over Poolside's
+shipped defaults.
