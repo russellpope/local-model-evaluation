@@ -2,10 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"sort"
-	"text/tabwriter"
 
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
@@ -36,17 +32,7 @@ var vmsCmd = &cobra.Command{
 			return err
 		}
 
-		sort.Slice(vmsList, func(i, j int) bool {
-			return vmsList[i].Name < vmsList[j].Name
-		})
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tVCPU\tRAM\tSTORAGE")
-		for _, vm := range vmsList {
-			ramGB := float64(vm.RAMMB) / 1024.0
-			fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.Bytes(vm.StorageBytes))
-		}
-		w.Flush()
+		format.RenderVMs(cmd.OutOrStdout(), vmsList)
 
 		return nil
 	},

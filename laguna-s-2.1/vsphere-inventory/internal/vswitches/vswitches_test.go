@@ -10,14 +10,15 @@ import (
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 func TestGetSwitches(t *testing.T) {
-	model := simulator.VPX()
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 2
-	model.Portgroup = 3
+	simModel := simulator.VPX()
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 2
+	simModel.Portgroup = 3
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		switches, err := GetSwitches(ctx, c)
@@ -81,16 +82,16 @@ func TestGetSwitches(t *testing.T) {
 		if !hasDistributed {
 			t.Error("GetSwitches() should return at least one distributed switch")
 		}
-	}, model)
+	}, simModel)
 }
 
 func TestGetVMsByPortgroup(t *testing.T) {
-	model := simulator.VPX()
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 1
-	model.Machine = 3
-	model.Portgroup = 2
+	simModel := simulator.VPX()
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 1
+	simModel.Machine = 3
+	simModel.Portgroup = 2
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		finder := find.NewFinder(c)
@@ -171,5 +172,246 @@ func TestGetVMsByPortgroup(t *testing.T) {
 				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
 			}
 		}
-	}, model)
+	}, simModel)
+}
+
+func TestGetVMsByPortgroupSubset(t *testing.T) {
+	simModel := simulator.VPX()
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 1
+	simModel.Machine = 5
+	simModel.Portgroup = 2
+
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		finder := find.NewFinder(c)
+		dc, err := finder.DefaultDatacenter(ctx)
+		if err != nil {
+			t.Fatalf("finding default datacenter: %v", err)
+		}
+		finder.SetDatacenter(dc)
+
+		vms, err := finder.VirtualMachineList(ctx, "*")
+		if err != nil {
+			t.Fatalf("finding VMs: %v", err)
+		}
+
+		if len(vms) != 5 {
+			t.Fatalf("expected 5 VMs, got %d", len(vms))
+		}
+
+		stdNetwork, err := finder.Network(ctx, "VM Network")
+		if err != nil {
+			t.Fatalf("finding standard port group: %v", err)
+		}
+		stdRef := stdNetwork.Reference()
+
+		for i := 2; i < 5; i++ {
+			var vmMo mo.VirtualMachine
+			err := vms[i].Properties(ctx, vms[i].Reference(), []string{"config.hardware"}, &vmMo)
+			if err != nil {
+				t.Fatalf("retrieving properties for VM %s: %v", vms[i].Name(), err)
+			}
+
+			var deviceChange []types.BaseVirtualDeviceConfigSpec
+			for _, device := range vmMo.Config.Hardware.Device {
+				if ethCard, ok := device.(*types.VirtualE1000); ok {
+					ethCard.Backing = &types.VirtualEthernetCardNetworkBackingInfo{
+						VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{
+							DeviceName: "VM Network",
+						},
+					}
+					deviceChange = append(deviceChange, &types.VirtualDeviceConfigSpec{
+						Operation: types.VirtualDeviceConfigSpecOperationEdit,
+						Device:    ethCard,
+					})
+				}
+			}
+
+			if len(deviceChange) == 0 {
+				continue
+			}
+
+			spec := types.VirtualMachineConfigSpec{
+				DeviceChange: deviceChange,
+			}
+			task, err := vms[i].Reconfigure(ctx, spec)
+			if err != nil {
+				t.Fatalf("reconfiguring VM %s: %v", vms[i].Name(), err)
+			}
+			if err := task.Wait(ctx); err != nil {
+				t.Fatalf("waiting for VM %s reconfigure: %v", vms[i].Name(), err)
+			}
+		}
+
+		vmsList, err := GetVMsByPortgroup(ctx, c, "DC0_DVPG0")
+		if err != nil {
+			t.Fatalf("GetVMsByPortgroup() error = %v", err)
+		}
+
+		if len(vmsList) != 2 {
+			t.Fatalf("GetVMsByPortgroup(%q) returned %d VMs, want 2", "DC0_DVPG0", len(vmsList))
+		}
+
+		sort.Slice(vmsList, func(i, j int) bool {
+			return vmsList[i].Name < vmsList[j].Name
+		})
+
+		expectedNames := []string{
+			"DC0_C0_RP0_VM0",
+			"DC0_C0_RP0_VM1",
+		}
+		for i, vm := range vmsList {
+			if vm.Name != expectedNames[i] {
+				t.Errorf("VM at index %d: Name = %q, want %q", i, vm.Name, expectedNames[i])
+			}
+		}
+
+		_ = stdRef
+
+		// Also test standard port group (VM Network) - the 3 reconfigured VMs
+		stdVms, err := GetVMsByPortgroup(ctx, c, "VM Network")
+		if err != nil {
+			t.Fatalf("GetVMsByPortgroup(\"VM Network\") error = %v", err)
+		}
+
+		if len(stdVms) != 3 {
+			t.Fatalf("GetVMsByPortgroup(\"VM Network\") returned %d VMs, want 3", len(stdVms))
+		}
+
+		sort.Slice(stdVms, func(i, j int) bool {
+			return stdVms[i].Name < stdVms[j].Name
+		})
+
+		expectedStdNames := []string{
+			"DC0_C0_RP0_VM2",
+			"DC0_C0_RP0_VM3",
+			"DC0_C0_RP0_VM4",
+		}
+		for i, vm := range stdVms {
+			if vm.Name != expectedStdNames[i] {
+				t.Errorf("VM at index %d: Name = %q, want %q", i, vm.Name, expectedStdNames[i])
+			}
+		}
+	}, simModel)
+}
+
+func TestClassifyLACP(t *testing.T) {
+	tests := []struct {
+		name string
+		info *types.VMwareDVSConfigInfo
+		want string
+	}{
+		{
+			name: "nil config -> N/A",
+			info: nil,
+			want: "N/A",
+		},
+		{
+			name: "LACP API version with group config -> enabled",
+			info: &types.VMwareDVSConfigInfo{
+				LacpApiVersion: "1.0.0",
+				LacpGroupConfig: []types.VMwareDvsLacpGroupConfig{
+					{Name: "test"},
+				},
+			},
+			want: "enabled",
+		},
+		{
+			name: "LACP API version without group config -> disabled",
+			info: &types.VMwareDVSConfigInfo{
+				LacpApiVersion: "1.0.0",
+			},
+			want: "disabled",
+		},
+		{
+			name: "no LACP API version -> N/A",
+			info: &types.VMwareDVSConfigInfo{},
+			want: "N/A",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyLACP(tt.info)
+			if got != tt.want {
+				t.Errorf("classifyLACP() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveVlanID(t *testing.T) {
+	tests := []struct {
+		name       string
+		portConfig types.BaseDVPortSetting
+		want       string
+	}{
+		{
+			name:       "nil port setting",
+			portConfig: nil,
+			want:       "0",
+		},
+		{
+			name: "VlanId == 0 -> 0",
+			portConfig: &types.VMwareDVSPortSetting{
+				DVPortSetting: types.DVPortSetting{},
+				Vlan: &types.VmwareDistributedVirtualSwitchVlanIdSpec{
+					VlanId: 0,
+				},
+			},
+			want: "0",
+		},
+		{
+			name: "VlanId == 4095 -> trunk",
+			portConfig: &types.VMwareDVSPortSetting{
+				DVPortSetting: types.DVPortSetting{},
+				Vlan: &types.VmwareDistributedVirtualSwitchVlanIdSpec{
+					VlanId: 4095,
+				},
+			},
+			want: "trunk",
+		},
+		{
+			name: "VlanId == 100 -> 100",
+			portConfig: &types.VMwareDVSPortSetting{
+				DVPortSetting: types.DVPortSetting{},
+				Vlan: &types.VmwareDistributedVirtualSwitchVlanIdSpec{
+					VlanId: 100,
+				},
+			},
+			want: "100",
+		},
+		{
+			name: "TrunkVlanSpec",
+			portConfig: &types.VMwareDVSPortSetting{
+				DVPortSetting: types.DVPortSetting{},
+				Vlan: &types.VmwareDistributedVirtualSwitchTrunkVlanSpec{
+					VlanId: []types.NumericRange{
+						{Start: 100, End: 200},
+					},
+				},
+			},
+			want: "100-200",
+		},
+		{
+			name: "PvlanSpec",
+			portConfig: &types.VMwareDVSPortSetting{
+				DVPortSetting: types.DVPortSetting{},
+				Vlan: &types.VmwareDistributedVirtualSwitchPvlanSpec{
+					PvlanId: 1000,
+				},
+			},
+			want: "pvlan:1000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveVlanID(tt.portConfig)
+			if got != tt.want {
+				t.Errorf("resolveVlanID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }

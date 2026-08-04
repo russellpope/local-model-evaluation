@@ -14,30 +14,39 @@ type Config struct {
 	Insecure   bool
 	Timeout    time.Duration
 	ConfigFile string
+	v          *viper.Viper
 }
 
 func New() *Config {
 	return &Config{
 		Timeout: 60 * time.Second,
+		v:       viper.GetViper(),
+	}
+}
+
+func NewWithViper(v *viper.Viper) *Config {
+	return &Config{
+		Timeout: 60 * time.Second,
+		v:       v,
 	}
 }
 
 func (c *Config) Load() error {
-	cfgFile := viper.GetString("config")
+	cfgFile := c.v.GetString("config")
 	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
-		if err := viper.ReadInConfig(); err != nil {
+		c.v.SetConfigFile(cfgFile)
+		if err := c.v.ReadInConfig(); err != nil {
 			return fmt.Errorf("reading config file: %w", err)
 		}
 	}
 
-	c.URL = viper.GetString("url")
-	c.Username = viper.GetString("username")
-	c.Password = viper.GetString("password")
-	c.Insecure = viper.GetBool("insecure")
+	c.URL = c.v.GetString("url")
+	c.Username = c.v.GetString("username")
+	c.Password = c.v.GetString("password")
+	c.Insecure = c.v.GetBool("insecure")
 	c.ConfigFile = cfgFile
 
-	timeoutStr := viper.GetString("timeout")
+	timeoutStr := c.v.GetString("timeout")
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
 		return fmt.Errorf("invalid timeout value %q: %w", timeoutStr, err)

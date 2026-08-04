@@ -4,19 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/model"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 )
 
-type VMInfo struct {
-	Name         string
-	VCPU         int
-	RAMMB        int
-	StorageBytes int64
-}
-
-func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
+func GetVMs(ctx context.Context, client *vim25.Client) ([]model.VMInfo, error) {
 	finder := find.NewFinder(client)
 
 	dcs, err := finder.DatacenterList(ctx, "*")
@@ -24,7 +18,7 @@ func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
 		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
-	var result []VMInfo
+	var result []model.VMInfo
 	for _, dc := range dcs {
 		finder.SetDatacenter(dc)
 
@@ -57,7 +51,7 @@ func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
 				ramMB = int(vmMo.Config.Hardware.MemoryMB)
 			}
 
-			result = append(result, VMInfo{
+			result = append(result, model.VMInfo{
 				Name:         vmMo.Name,
 				VCPU:         vcpu,
 				RAMMB:        ramMB,

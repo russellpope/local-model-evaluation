@@ -2,10 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"sort"
-	"text/tabwriter"
 
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/datastores"
@@ -36,16 +32,7 @@ var datastoresCmd = &cobra.Command{
 			return err
 		}
 
-		sort.Slice(dsList, func(i, j int) bool {
-			return dsList[i].Name < dsList[j].Name
-		})
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTYPE\tUSED\tAVAILABLE")
-		for _, ds := range dsList {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ds.Name, ds.Type, format.Bytes(ds.UsedBytes), format.Bytes(ds.AvailableBytes))
-		}
-		w.Flush()
+		format.RenderDatastores(cmd.OutOrStdout(), dsList)
 
 		return nil
 	},

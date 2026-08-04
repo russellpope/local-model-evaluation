@@ -2,15 +2,16 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"sort"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vswitches"
 	"github.com/spf13/cobra"
+	"github.com/vmware/govmomi/find"
 )
 
 var vswitchesCmd = &cobra.Command{
@@ -39,17 +40,7 @@ var vswitchesCmd = &cobra.Command{
 				return err
 			}
 
-			sort.Slice(vms, func(i, j int) bool {
-				return vms[i].Name < vms[j].Name
-			})
-
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tVCPU\tRAM\tSTORAGE")
-			for _, vm := range vms {
-				ramGB := float64(vm.RAMMB) / 1024.0
-				fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.Bytes(vm.StorageBytes))
-			}
-			w.Flush()
+			format.RenderVMs(os.Stdout, vms)
 			return nil
 		}
 
@@ -58,20 +49,7 @@ var vswitchesCmd = &cobra.Command{
 			return err
 		}
 
-		sort.Slice(switches, func(i, j int) bool {
-			if switches[i].Name != switches[j].Name {
-				return switches[i].Name < switches[j].Name
-			}
-			return switches[i].Portgroup < switches[j].Portgroup
-		})
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tPORTS\tUSED")
-		for _, sw := range switches {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-				sw.Name, sw.Type, sw.Portgroup, sw.VLAN, sw.Uplinks, sw.LACP, sw.TotalPorts, sw.UsedPorts)
-		}
-		w.Flush()
+		format.RenderVSwitches(os.Stdout, switches)
 
 		return nil
 	},
@@ -79,4 +57,27 @@ var vswitchesCmd = &cobra.Command{
 
 func init() {
 	vswitchesCmd.Flags().String("portgroup", "", "filter by port group name")
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var notFoundErr *find.NotFoundError
+	return errors.As(err, &notFoundErr)
+}
+
+func resolvePortgroupFromOutput(output string) (string, error) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) < 2 {
+		return "", fmt.Errorf("no portgroup lines in output")
+	}
+
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			return fields[2], nil
+		}
+	}
+	return "", fmt.Errorf("no portgroup found in output")
 }

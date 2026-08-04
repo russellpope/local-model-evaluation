@@ -3,8 +3,8 @@ package config
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/url"
+	"os"
 
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25"
@@ -12,16 +12,9 @@ import (
 )
 
 func NewClient(ctx context.Context, c *Config) (*vim25.Client, error) {
-	u, err := url.Parse(c.URL)
+	u, err := soap.ParseURL(c.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing URL %q: %w", c.URL, err)
-	}
-
-	if u.Scheme == "" {
-		u.Scheme = "https"
-	}
-	if u.Port() == "" {
-		u.Host = net.JoinHostPort(u.Hostname(), "443")
 	}
 
 	soapClient := soap.NewClient(u, c.Insecure)
@@ -42,5 +35,7 @@ func NewClient(ctx context.Context, c *Config) (*vim25.Client, error) {
 
 func Logout(ctx context.Context, client *vim25.Client) {
 	sm := session.NewManager(client)
-	_ = sm.Logout(ctx)
+	if err := sm.Logout(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: logout failed: %v\n", err)
+	}
 }

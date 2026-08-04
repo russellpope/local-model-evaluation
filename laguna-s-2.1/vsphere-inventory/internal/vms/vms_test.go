@@ -9,12 +9,12 @@ import (
 )
 
 func TestGetVMs(t *testing.T) {
-	model := simulator.VPX()
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 1
-	model.Machine = 5
-	model.Pool = 0
+	simModel := simulator.VPX()
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 1
+	simModel.Machine = 5
+	simModel.Pool = 0
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		vmsList, err := GetVMs(ctx, c)
@@ -40,5 +40,5 @@ func TestGetVMs(t *testing.T) {
 				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
 			}
 		}
-	}, model)
+	}, simModel)
 }

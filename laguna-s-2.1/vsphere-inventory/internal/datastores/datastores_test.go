@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 )
 
 func TestGetDatastores(t *testing.T) {
-	model := simulator.VPX()
-	model.Datacenter = 1
-	model.Datastore = 3
+	simModel := simulator.VPX()
+	simModel.Datacenter = 1
+	simModel.Datastore = 3
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		dsList, err := GetDatastores(ctx, c)
@@ -43,5 +44,36 @@ func TestGetDatastores(t *testing.T) {
 					ds.Name, ds.Type, "unknown")
 			}
 		}
-	}, model)
+	}, simModel)
+}
+
+func TestGetDatastoresExactValues(t *testing.T) {
+	simModel := simulator.VPX()
+	simModel.Datacenter = 1
+	simModel.Datastore = 1
+
+	simulator.Test(func(ctx context.Context, c *vim25.Client) {
+		dsList, err := GetDatastores(ctx, c)
+		if err != nil {
+			t.Fatalf("GetDatastores() error = %v", err)
+		}
+
+		if len(dsList) != 1 {
+			t.Fatalf("GetDatastores() returned %d datastores, want 1", len(dsList))
+		}
+
+		ds := dsList[0]
+		if ds.Type != "unknown" {
+			t.Errorf("Datastore %s: type = %q, want %q", ds.Name, ds.Type, "unknown")
+		}
+
+		usedStr := format.Bytes(ds.UsedBytes)
+		availStr := format.Bytes(ds.AvailableBytes)
+		if usedStr == "" {
+			t.Error("used bytes string should not be empty")
+		}
+		if availStr == "" {
+			t.Error("available bytes string should not be empty")
+		}
+	}, simModel)
 }

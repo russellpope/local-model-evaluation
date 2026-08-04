@@ -1,294 +1,14 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
-	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"testing"
-	"text/tabwriter"
 
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
-	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/datastores"
-	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
-	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vms"
-	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vswitches"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
-	"github.com/vmware/govmomi/simulator"
-	"github.com/vmware/govmomi/vim25"
-	"github.com/vmware/govmomi/vim25/mo"
 )
-
-func TestVMsCommandAgainstSimulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 8
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 3
-	model.Pool = 0
-
-	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		vmsList, err := vms.GetVMs(ctx, c)
-		if err != nil {
-			t.Fatalf("GetVMs() error = %v", err)
-		}
-
-		if len(vmsList) != 8 {
-			t.Fatalf("GetVMs() returned %d VMs, want 8", len(vmsList))
-		}
-
-		sort.Slice(vmsList, func(i, j int) bool {
-			return vmsList[i].Name < vmsList[j].Name
-		})
-
-		for _, vm := range vmsList {
-			if vm.VCPU != 1 {
-				t.Errorf("VM %s: VCPU = %d, want 1", vm.Name, vm.VCPU)
-			}
-			if vm.RAMMB != 32 {
-				t.Errorf("VM %s: RAMMB = %d, want 32", vm.Name, vm.RAMMB)
-			}
-			if vm.StorageBytes != 234 {
-				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
-			}
-		}
-
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tVCPU\tRAM\tSTORAGE")
-		for _, vm := range vmsList {
-			ramGB := float64(vm.RAMMB) / 1024.0
-			fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.Bytes(vm.StorageBytes))
-		}
-		w.Flush()
-
-		output := buf.String()
-		if !strings.Contains(output, "NAME") {
-			t.Error("output should contain header")
-		}
-		if !strings.Contains(output, "VCPU") {
-			t.Error("output should contain VCPU column")
-		}
-		if !strings.Contains(output, "RAM") {
-			t.Error("output should contain RAM column")
-		}
-		if !strings.Contains(output, "STORAGE") {
-			t.Error("output should contain STORAGE column")
-		}
-	}, model)
-}
-
-func TestDatastoresCommandAgainstSimulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Datastore = 3
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 3
-
-	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		dsList, err := datastores.GetDatastores(ctx, c)
-		if err != nil {
-			t.Fatalf("GetDatastores() error = %v", err)
-		}
-
-		if len(dsList) != 3 {
-			t.Fatalf("GetDatastores() returned %d datastores, want 3", len(dsList))
-		}
-
-		sort.Slice(dsList, func(i, j int) bool {
-			return dsList[i].Name < dsList[j].Name
-		})
-
-		for _, ds := range dsList {
-			if ds.Type != "unknown" {
-				t.Errorf("Datastore %s: Type = %q, want %q (vcsim LocalDatastoreInfo should be unknown)", ds.Name, ds.Type, "unknown")
-			}
-			if ds.UsedBytes+ds.AvailableBytes != ds.CapacityBytes {
-				t.Errorf("Datastore %s: used + available (%d + %d) != capacity (%d)",
-					ds.Name, ds.UsedBytes, ds.AvailableBytes, ds.CapacityBytes)
-			}
-		}
-
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTYPE\tUSED\tAVAILABLE")
-		for _, ds := range dsList {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ds.Name, ds.Type, format.Bytes(ds.UsedBytes), format.Bytes(ds.AvailableBytes))
-		}
-		w.Flush()
-
-		output := buf.String()
-		if !strings.Contains(output, "NAME") {
-			t.Error("output should contain header")
-		}
-		if !strings.Contains(output, "TYPE") {
-			t.Error("output should contain TYPE column")
-		}
-		if !strings.Contains(output, "USED") {
-			t.Error("output should contain USED column")
-		}
-		if !strings.Contains(output, "AVAILABLE") {
-			t.Error("output should contain AVAILABLE column")
-		}
-	}, model)
-}
-
-func TestVSwitchesCommandAgainstSimulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 2
-	model.Portgroup = 3
-
-	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		switches, err := vswitches.GetSwitches(ctx, c)
-		if err != nil {
-			t.Fatalf("GetSwitches() error = %v", err)
-		}
-
-		if len(switches) == 0 {
-			t.Fatal("GetSwitches() should return at least one switch")
-		}
-
-		sort.Slice(switches, func(i, j int) bool {
-			if switches[i].Name != switches[j].Name {
-				return switches[i].Name < switches[j].Name
-			}
-			return switches[i].Portgroup < switches[j].Portgroup
-		})
-
-		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tPORTS\tUSED")
-		for _, sw := range switches {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-				sw.Name, sw.Type, sw.Portgroup, sw.VLAN, sw.Uplinks, sw.LACP, sw.TotalPorts, sw.UsedPorts)
-		}
-		w.Flush()
-
-		output := buf.String()
-		if !strings.Contains(output, "SWITCH") {
-			t.Error("output should contain header")
-		}
-		if !strings.Contains(output, "SWITCH TYPE") {
-			t.Error("output should contain SWITCH TYPE column")
-		}
-		if !strings.Contains(output, "PORTGROUP") {
-			t.Error("output should contain PORTGROUP column")
-		}
-		if !strings.Contains(output, "VLAN") {
-			t.Error("output should contain VLAN column")
-		}
-		if !strings.Contains(output, "UPLINKS") {
-			t.Error("output should contain UPLINKS column")
-		}
-		if !strings.Contains(output, "LACP") {
-			t.Error("output should contain LACP column")
-		}
-		if !strings.Contains(output, "PORTS") {
-			t.Error("output should contain PORTS column")
-		}
-		if !strings.Contains(output, "USED") {
-			t.Error("output should contain USED column")
-		}
-	}, model)
-}
-
-func TestVSwitchesPortgroupCommandAgainstSimulator(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 3
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 1
-	model.Portgroup = 2
-
-	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		finder := find.NewFinder(c)
-		dc, err := finder.DefaultDatacenter(ctx)
-		if err != nil {
-			t.Fatalf("finding default datacenter: %v", err)
-		}
-		finder.SetDatacenter(dc)
-
-		vms, err := finder.VirtualMachineList(ctx, "*")
-		if err != nil {
-			t.Fatalf("finding VMs: %v", err)
-		}
-
-		if len(vms) == 0 {
-			t.Fatal("no VMs found in simulator")
-		}
-
-		var portgroupName string
-		for _, vm := range vms {
-			var vmMo mo.VirtualMachine
-			err := vm.Properties(ctx, vm.Reference(), []string{
-				"name",
-				"network",
-			}, &vmMo)
-			if err != nil {
-				continue
-			}
-
-			if len(vmMo.Network) > 0 {
-				netRef := vmMo.Network[0]
-				common := object.NewCommon(c, netRef)
-
-				var netMo mo.Network
-				err := common.Properties(ctx, netRef, []string{"name"}, &netMo)
-				if err != nil {
-					continue
-				}
-
-				portgroupName = netMo.Name
-				break
-			}
-		}
-
-		if portgroupName == "" {
-			t.Fatal("no port group found for any VM")
-		}
-
-		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, portgroupName)
-		if err != nil {
-			t.Fatalf("GetVMsByPortgroup() error = %v", err)
-		}
-
-		if len(vmsList) != 3 {
-			t.Fatalf("GetVMsByPortgroup(%q) returned %d VMs, want 3", portgroupName, len(vmsList))
-		}
-
-		sort.Slice(vmsList, func(i, j int) bool {
-			return vmsList[i].Name < vmsList[j].Name
-		})
-
-		expectedNames := []string{
-			"DC0_C0_RP0_VM0",
-			"DC0_C0_RP0_VM1",
-			"DC0_C0_RP0_VM2",
-		}
-		for i, vm := range vmsList {
-			if vm.Name != expectedNames[i] {
-				t.Errorf("VM at index %d: Name = %q, want %q", i, vm.Name, expectedNames[i])
-			}
-			if vm.VCPU != 1 {
-				t.Errorf("VM %s: VCPU = %d, want 1", vm.Name, vm.VCPU)
-			}
-			if vm.RAMMB != 32 {
-				t.Errorf("VM %s: RAMMB = %d, want 32", vm.Name, vm.RAMMB)
-			}
-			if vm.StorageBytes != 234 {
-				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
-			}
-		}
-	}, model)
-}
 
 func TestConfigPrecedenceFlagOverEnv(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -303,9 +23,9 @@ timeout: 10s
 		t.Fatalf("writing config file: %v", err)
 	}
 
-	viper.Reset()
-	viper.SetEnvPrefix("VSPHERE")
-	viper.AutomaticEnv()
+	v := viper.New()
+	v.SetEnvPrefix("VSPHERE")
+	v.AutomaticEnv()
 
 	os.Setenv("VSPHERE_URL", "https://env.lab/sdk")
 	os.Setenv("VSPHERE_USERNAME", "envuser")
@@ -318,9 +38,9 @@ timeout: 10s
 	fs.String("url", "", "vCenter URL")
 	fs.String("username", "", "vCenter username")
 	fs.String("password", "", "vCenter password")
-	viper.BindPFlag("url", fs.Lookup("url"))
-	viper.BindPFlag("username", fs.Lookup("username"))
-	viper.BindPFlag("password", fs.Lookup("password"))
+	v.BindPFlag("url", fs.Lookup("url"))
+	v.BindPFlag("username", fs.Lookup("username"))
+	v.BindPFlag("password", fs.Lookup("password"))
 
 	if err := fs.Parse([]string{
 		"--url", "https://flag.lab/sdk",
@@ -330,12 +50,12 @@ timeout: 10s
 		t.Fatalf("parsing flags: %v", err)
 	}
 
-	viper.SetConfigFile(configFile)
-	if err := viper.ReadInConfig(); err != nil {
+	v.SetConfigFile(configFile)
+	if err := v.ReadInConfig(); err != nil {
 		t.Fatalf("reading config file: %v", err)
 	}
 
-	c := config.New()
+	c := config.NewWithViper(v)
 	if err := c.Load(); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}

@@ -3,12 +3,10 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"sort"
 	"strings"
 	"testing"
-	"text/tabwriter"
 
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/config"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/datastores"
@@ -21,12 +19,12 @@ import (
 )
 
 func TestEndToEndVMLoop(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 8
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 3
-	model.Pool = 0
+	simModel := simulator.VPX()
+	simModel.Machine = 8
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 3
+	simModel.Pool = 0
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		vmsList, err := vms.GetVMs(ctx, c)
@@ -37,10 +35,6 @@ func TestEndToEndVMLoop(t *testing.T) {
 		if len(vmsList) != 8 {
 			t.Fatalf("GetVMs() returned %d VMs, want 8", len(vmsList))
 		}
-
-		sort.Slice(vmsList, func(i, j int) bool {
-			return vmsList[i].Name < vmsList[j].Name
-		})
 
 		for _, vm := range vmsList {
 			if vm.VCPU != 1 {
@@ -55,13 +49,7 @@ func TestEndToEndVMLoop(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tVCPU\tRAM\tSTORAGE")
-		for _, vm := range vmsList {
-			ramGB := float64(vm.RAMMB) / 1024.0
-			fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.Bytes(vm.StorageBytes))
-		}
-		w.Flush()
+		format.RenderVMs(&buf, vmsList)
 
 		output := buf.String()
 		if !strings.Contains(output, "NAME") {
@@ -76,15 +64,18 @@ func TestEndToEndVMLoop(t *testing.T) {
 		if !strings.Contains(output, "STORAGE") {
 			t.Error("output should contain STORAGE column")
 		}
-	}, model)
+		if !strings.Contains(output, "32.0 MiB") {
+			t.Error("output should contain 32.0 MiB for RAM")
+		}
+	}, simModel)
 }
 
 func TestEndToEndDatastoresLoop(t *testing.T) {
-	model := simulator.VPX()
-	model.Datastore = 3
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 3
+	simModel := simulator.VPX()
+	simModel.Datastore = 3
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 3
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		dsList, err := datastores.GetDatastores(ctx, c)
@@ -95,10 +86,6 @@ func TestEndToEndDatastoresLoop(t *testing.T) {
 		if len(dsList) != 3 {
 			t.Fatalf("GetDatastores() returned %d datastores, want 3", len(dsList))
 		}
-
-		sort.Slice(dsList, func(i, j int) bool {
-			return dsList[i].Name < dsList[j].Name
-		})
 
 		for _, ds := range dsList {
 			if ds.Type != "unknown" {
@@ -111,12 +98,7 @@ func TestEndToEndDatastoresLoop(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTYPE\tUSED\tAVAILABLE")
-		for _, ds := range dsList {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ds.Name, ds.Type, format.Bytes(ds.UsedBytes), format.Bytes(ds.AvailableBytes))
-		}
-		w.Flush()
+		format.RenderDatastores(&buf, dsList)
 
 		output := buf.String()
 		if !strings.Contains(output, "NAME") {
@@ -131,15 +113,15 @@ func TestEndToEndDatastoresLoop(t *testing.T) {
 		if !strings.Contains(output, "AVAILABLE") {
 			t.Error("output should contain AVAILABLE column")
 		}
-	}, model)
+	}, simModel)
 }
 
 func TestEndToEndVSwitchesLoop(t *testing.T) {
-	model := simulator.VPX()
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 2
-	model.Portgroup = 3
+	simModel := simulator.VPX()
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 2
+	simModel.Portgroup = 3
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		switches, err := vswitches.GetSwitches(ctx, c)
@@ -188,21 +170,8 @@ func TestEndToEndVSwitchesLoop(t *testing.T) {
 			t.Error("GetSwitches() should return at least one distributed switch")
 		}
 
-		sort.Slice(switches, func(i, j int) bool {
-			if switches[i].Name != switches[j].Name {
-				return switches[i].Name < switches[j].Name
-			}
-			return switches[i].Portgroup < switches[j].Portgroup
-		})
-
 		var buf bytes.Buffer
-		w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SWITCH\tSWITCH TYPE\tPORTGROUP\tVLAN\tUPLINKS\tLACP\tPORTS\tUSED")
-		for _, sw := range switches {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\n",
-				sw.Name, sw.Type, sw.Portgroup, sw.VLAN, sw.Uplinks, sw.LACP, sw.TotalPorts, sw.UsedPorts)
-		}
-		w.Flush()
+		format.RenderVSwitches(&buf, switches)
 
 		output := buf.String()
 		if !strings.Contains(output, "SWITCH") {
@@ -214,16 +183,16 @@ func TestEndToEndVSwitchesLoop(t *testing.T) {
 		if !strings.Contains(output, "DC0_DVPG0") {
 			t.Error("output should contain DC0_DVPG0 portgroup")
 		}
-	}, model)
+	}, simModel)
 }
 
 func TestEndToEndPortgroupFilterLoop(t *testing.T) {
-	model := simulator.VPX()
-	model.Machine = 3
-	model.Host = 0
-	model.Cluster = 1
-	model.ClusterHost = 1
-	model.Portgroup = 2
+	simModel := simulator.VPX()
+	simModel.Machine = 3
+	simModel.Host = 0
+	simModel.Cluster = 1
+	simModel.ClusterHost = 1
+	simModel.Portgroup = 2
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
 		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, "DC0_DVPG0")
@@ -258,7 +227,7 @@ func TestEndToEndPortgroupFilterLoop(t *testing.T) {
 				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
 			}
 		}
-	}, model)
+	}, simModel)
 }
 
 func TestEndToEndConfigPrecedence(t *testing.T) {
@@ -274,15 +243,15 @@ timeout: 10s
 		t.Fatalf("writing config file: %v", err)
 	}
 
-	viperReset()
-	viper.SetEnvPrefix("VSPHERE")
-	viper.AutomaticEnv()
+	v := viper.New()
+	v.SetEnvPrefix("VSPHERE")
+	v.AutomaticEnv()
 	setEnv(t, "VSPHERE_URL", "https://env.lab/sdk")
 	setEnv(t, "VSPHERE_USERNAME", "envuser")
 	setEnv(t, "VSPHERE_PASSWORD", "envpass")
 
-	viper.Set("config", configFile)
-	c := config.New()
+	v.Set("config", configFile)
+	c := config.NewWithViper(v)
 	if err := c.Load(); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -299,32 +268,21 @@ timeout: 10s
 }
 
 func TestProductionBindPFlagWired(t *testing.T) {
-	// Verify that the production rootCmd has url/username/password flags
-	// bound to viper. If BindPFlag("url", ...) is deleted from init(),
-	// this test catches it.
 	urlFlag := rootCmd.PersistentFlags().Lookup("url")
 	if urlFlag == nil {
 		t.Fatal("rootCmd should have a --url persistent flag")
 	}
 
-	// The flag must be bound to viper so that --url is read by config.Load()
-	// We verify by setting the flag value and checking viper picks it up
-	viperReset()
-	viper.SetEnvPrefix("VSPHERE")
-	viper.AutomaticEnv()
-
-	// Set the flag directly via the flag set
 	urlFlag.Value.Set("https://flag.lab/sdk")
-	viper.BindPFlag("url", urlFlag)
 
-	val := viper.GetString("url")
-	if val != "https://flag.lab/sdk" {
-		t.Errorf("viper.GetString(\"url\") = %q, want %q (BindPFlag for url is not wired)", val, "https://flag.lab/sdk")
+	c := config.New()
+	if err := c.Load(); err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-}
 
-func viperReset() {
-	viper.Reset()
+	if c.URL != "https://flag.lab/sdk" {
+		t.Errorf("cfg.URL = %q, want %q (BindPFlag for url is not wired)", c.URL, "https://flag.lab/sdk")
+	}
 }
 
 func setEnv(t *testing.T, key, val string) {
@@ -338,4 +296,24 @@ func setEnv(t *testing.T, key, val string) {
 			os.Unsetenv(key)
 		}
 	})
+}
+
+func TestResolvePortgroupFromOutput(t *testing.T) {
+	output := "SWITCH  SWITCH TYPE  PORTGROUP    VLAN  UPLINKS  LACP  PORTS  USED\n" +
+		"DVS0    distributed    DC0_DVPG0    0     N/A      N/A   5      0\n" +
+		"DVS0    distributed    DC0_DVPG1    0     N/A      N/A   5      0\n"
+
+	pg, err := resolvePortgroupFromOutput(output)
+	if err != nil {
+		t.Fatalf("resolvePortgroupFromOutput() error = %v", err)
+	}
+	if pg != "DC0_DVPG0" {
+		t.Errorf("resolvePortgroupFromOutput() = %q, want %q", pg, "DC0_DVPG0")
+	}
+}
+
+func TestIsNotFoundError(t *testing.T) {
+	if isNotFoundError(nil) {
+		t.Error("isNotFoundError(nil) should be false")
+	}
 }

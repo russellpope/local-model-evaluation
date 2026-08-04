@@ -22,7 +22,7 @@ verify: vet fmt
 	go build -o $(BINARY) ./cmd/vsphere-inventory
 	@echo "Build successful."
 	@echo "Running full end-to-end loop against simulator..."
-	go test ./... -race -count=1 -v -run "TestEndToEnd"
+	go test ./... -race -count=1 -v -run "TestVerifyEndToEnd"
 	@echo "End-to-end loop passed."
 	@echo "Running full test suite..."
 	go test ./... -race -count=1

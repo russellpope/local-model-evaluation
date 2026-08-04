@@ -2,9 +2,13 @@ package vswitches
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
+	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/model"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25"
@@ -12,25 +16,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-type SwitchInfo struct {
-	Name       string
-	Type       string
-	Portgroup  string
-	VLAN       string
-	Uplinks    string
-	LACP       string
-	TotalPorts int
-	UsedPorts  int
-}
-
-type VMInfo struct {
-	Name         string
-	VCPU         int
-	RAMMB        int
-	StorageBytes int64
-}
-
-func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error) {
+func GetSwitches(ctx context.Context, client *vim25.Client) ([]format.SwitchInfo, error) {
 	finder := find.NewFinder(client)
 
 	dcs, err := finder.DatacenterList(ctx, "*")
@@ -38,7 +24,7 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
-	var result []SwitchInfo
+	var result []format.SwitchInfo
 
 	for _, dc := range dcs {
 		finder.SetDatacenter(dc)
@@ -96,7 +82,7 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 						usedPorts = 0
 					}
 
-					result = append(result, SwitchInfo{
+					result = append(result, format.SwitchInfo{
 						Name:       vsw.Name,
 						Type:       "standard",
 						Portgroup:  pg.Spec.Name,
@@ -139,6 +125,8 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 
 				usedPorts := 0
 				dvsName := "N/A"
+				var lacp string
+				var uplinks string
 				if dvpMo.Config.DistributedVirtualSwitch != nil {
 					dvsRef := *dvpMo.Config.DistributedVirtualSwitch
 					name, err := resolveDVSName(ctx, client, dvsRef)
@@ -150,15 +138,21 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 					if err != nil {
 						return nil, fmt.Errorf("fetching DVPort count for portgroup %s: %w", dvpMo.Name, err)
 					}
+					lacp, uplinks, err = resolveDVSLACPAndUplinks(ctx, client, dvsRef)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: resolving DVS LACP/uplinks for portgroup %s: %v\n", dvpMo.Name, err)
+						lacp = "N/A"
+						uplinks = "N/A"
+					}
 				}
 
-				result = append(result, SwitchInfo{
+				result = append(result, format.SwitchInfo{
 					Name:       dvsName,
 					Type:       "distributed",
 					Portgroup:  dvpMo.Name,
 					VLAN:       vlanID,
-					Uplinks:    "N/A",
-					LACP:       "N/A",
+					Uplinks:    uplinks,
+					LACP:       lacp,
 					TotalPorts: totalPorts,
 					UsedPorts:  usedPorts,
 				})
@@ -181,6 +175,9 @@ func resolveVlanID(portConfig types.BaseDVPortSetting) string {
 	case *types.VmwareDistributedVirtualSwitchVlanIdSpec:
 		if vlan.VlanId == 0 {
 			return "0"
+		}
+		if vlan.VlanId == 4095 {
+			return "trunk"
 		}
 		return fmt.Sprintf("%d", vlan.VlanId)
 	case *types.VmwareDistributedVirtualSwitchTrunkVlanSpec:
@@ -225,7 +222,47 @@ func resolveDVSName(ctx context.Context, client *vim25.Client, dvsRef types.Mana
 	return name, nil
 }
 
-func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName string) ([]VMInfo, error) {
+func resolveDVSLACPAndUplinks(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference) (string, string, error) {
+	dvs := object.NewDistributedVirtualSwitch(client, dvsRef)
+	var dvsMo mo.DistributedVirtualSwitch
+	err := dvs.Properties(ctx, dvsRef, []string{
+		"config",
+	}, &dvsMo)
+	if err != nil {
+		return "", "", fmt.Errorf("retrieving DVS config: %w", err)
+	}
+
+	var dvsConfig *types.VMwareDVSConfigInfo
+	if dvsMo.Config != nil {
+		dvsConfig, _ = dvsMo.Config.(*types.VMwareDVSConfigInfo)
+	}
+
+	lacp := classifyLACP(dvsConfig)
+
+	uplinkStr := "N/A"
+	if dvsConfig != nil && dvsConfig.UplinkPortPolicy != nil {
+		if nameArray, ok := dvsConfig.UplinkPortPolicy.(*types.DVSNameArrayUplinkPortPolicy); ok && len(nameArray.UplinkPortName) > 0 {
+			uplinkStr = strings.Join(nameArray.UplinkPortName, ",")
+		}
+	}
+
+	return lacp, uplinkStr, nil
+}
+
+func classifyLACP(config *types.VMwareDVSConfigInfo) string {
+	if config == nil {
+		return "N/A"
+	}
+	if config.LacpApiVersion != "" && config.LacpGroupConfig != nil {
+		return "enabled"
+	}
+	if config.LacpApiVersion != "" {
+		return "disabled"
+	}
+	return "N/A"
+}
+
+func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName string) ([]model.VMInfo, error) {
 	finder := find.NewFinder(client)
 
 	dcs, err := finder.DatacenterList(ctx, "*")
@@ -244,7 +281,7 @@ func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName 
 			found = true
 			break
 		}
-		if !strings.Contains(err.Error(), "not found") {
+		if !isNotFoundError(err) {
 			return nil, fmt.Errorf("finding port group %q in datacenter %s: %w", portgroupName, dc.Name(), err)
 		}
 	}
@@ -253,7 +290,7 @@ func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName 
 		return nil, fmt.Errorf("finding port group %q: not found", portgroupName)
 	}
 
-	var result []VMInfo
+	var result []model.VMInfo
 	for _, dc := range dcs {
 		finder.SetDatacenter(dc)
 
@@ -299,7 +336,7 @@ func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName 
 				ramMB = int(vmMo.Config.Hardware.MemoryMB)
 			}
 
-			result = append(result, VMInfo{
+			result = append(result, model.VMInfo{
 				Name:         vmMo.Name,
 				VCPU:         vcpu,
 				RAMMB:        ramMB,
@@ -309,4 +346,19 @@ func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName 
 	}
 
 	return result, nil
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var notFoundErr *find.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		return true
+	}
+	var notFound interface{ NotFound() bool }
+	if errors.As(err, &notFound) {
+		return notFound.NotFound()
+	}
+	return false
 }

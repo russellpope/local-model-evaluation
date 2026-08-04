@@ -3,22 +3,16 @@ package datastores
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/transport"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 )
 
-type DatastoreInfo struct {
-	Name           string
-	Type           string
-	UsedBytes      int64
-	AvailableBytes int64
-	CapacityBytes  int64
-}
-
-func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, error) {
+func GetDatastores(ctx context.Context, client *vim25.Client) ([]format.DatastoreInfo, error) {
 	finder := find.NewFinder(client)
 
 	dcs, err := finder.DatacenterList(ctx, "*")
@@ -26,7 +20,7 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
-	var result []DatastoreInfo
+	var result []format.DatastoreInfo
 	for _, dc := range dcs {
 		finder.SetDatacenter(dc)
 
@@ -39,7 +33,6 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 			var dsMo mo.Datastore
 			err := ds.Properties(ctx, ds.Reference(), []string{
 				"name",
-				"summary.type",
 				"summary.capacity",
 				"summary.freeSpace",
 				"info",
@@ -54,14 +47,18 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 
 			used := capacity - freeSpace
 
-			transportType, err := transport.ClassifyDatastore(ctx, client, dsMo)
+			classified, err := transport.ClassifyDatastore(ctx, client, dsMo)
 			if err != nil {
 				return nil, fmt.Errorf("classifying datastore %s: %w", dsMo.Name, err)
 			}
 
-			result = append(result, DatastoreInfo{
+			if classified.Reason != "" {
+				fmt.Fprintf(os.Stderr, "warning: datastore %s: %s\n", dsMo.Name, classified.Reason)
+			}
+
+			result = append(result, format.DatastoreInfo{
 				Name:           dsMo.Name,
-				Type:           transportType,
+				Type:           classified.Type,
 				UsedBytes:      used,
 				AvailableBytes: freeSpace,
 				CapacityBytes:  capacity,
