@@ -678,13 +678,25 @@ that the model was not charged for them. The twelve new exit-criterion mutations
 instruction that assertions be derived from data the test establishes rather than literals that
 happen to match simulator defaults, which is what made round 2's criterion-6 assertion vacuous.
 
-**Methodology note — the arm is less hitlist-only than designed.** At 18:26:29 in round 2 the model
-read [`REVIEW-remediated-r1.md`](../../../../laguna-s-2.1/REVIEW-remediated-r1.md) — the full
-round-1 rescore — without the hitlist pointing it there. It locates prior audit reports in the
-workspace on its own. This does not invalidate the round (the reports describe the model's own
-code, and the hitlist is a strict subset of their findings), but the round-3 workspace now holds
-*three* such reports, so the model is effectively self-prompting from the full audit history rather
-than from the curated hitlist alone. Recorded so the arm is not described as narrower than it is.
+**Methodology note — a document-rich workspace is a deliberate condition, not a leak.** At 18:26:29
+in round 2 the model read [`REVIEW-remediated-r1.md`](../../../../laguna-s-2.1/REVIEW-remediated-r1.md)
+— the full round-1 rescore — without the hitlist pointing it there. It locates prior audit reports
+in the workspace on its own, and the round-3 workspace now holds seven such documents.
+
+Confirmed with the operator (2026-08-03) that this is **intended**: the prompt always names the
+current instrument explicitly, and the surrounding trail of reports and design documents is left in
+place because that is how their repositories actually look. The arm is therefore not
+"hitlist-only", and was never meant to be — it measures the model in a workspace resembling a real
+one, which is the more ecologically valid test. The model's habit of locating and reading its own
+prior audit history is a **measured behaviour**, not contamination; nothing in the reports is
+information it could not derive from its own code.
+
+Two things still follow for interpretation. First, a reader of these scores should know the model
+had the full audit history available from round 2 onward — it is not reasoning from the hitlist
+alone. Second, one item in that trail is a genuine hazard rather than useful context:
+`HITLIST-round2.md` is superseded and contains both the §2.6 wording that induced the criterion-7
+regression and the two unsatisfiable exit criteria. If a round-3 failure traces to either, check
+which hitlist was actually read before charging it to the model.
 
 **`preserveThinking` — hypothesis stated before round 3 runs, so it cannot be fitted afterwards.**
 All three rounds ran with LM Studio's `preserveThinking` **off**, matching the whole cohort, so the
