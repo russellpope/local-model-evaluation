@@ -8,8 +8,10 @@ import (
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/transport"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 func GetDatastores(ctx context.Context, client *vim25.Client) ([]format.DatastoreInfo, error) {
@@ -34,19 +36,29 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]format.Datastor
 			return nil, fmt.Errorf("listing datastores in datacenter %s: %w", dc.Name(), err)
 		}
 
+		var dsRefs []types.ManagedObjectReference
 		for _, ds := range datastores {
-			var dsMo mo.Datastore
-			err := ds.Properties(ctx, ds.Reference(), []string{
-				"name",
-				"summary.capacity",
-				"summary.freeSpace",
-				"info",
-				"host",
-			}, &dsMo)
-			if err != nil {
-				return nil, fmt.Errorf("retrieving properties for datastore %s: %w", ds.Name(), err)
-			}
+			dsRefs = append(dsRefs, ds.Reference())
+		}
 
+		if len(dsRefs) == 0 {
+			continue
+		}
+
+		var dsMos []mo.Datastore
+		pc := property.DefaultCollector(client)
+		if err := pc.Retrieve(ctx, dsRefs, []string{
+			"name",
+			"summary.capacity",
+			"summary.freeSpace",
+			"info",
+			"host",
+		}, &dsMos); err != nil {
+			return nil, fmt.Errorf("retrieving datastore properties: %w", err)
+		}
+
+		for i := range dsMos {
+			dsMo := dsMos[i]
 			capacity := dsMo.Summary.Capacity
 			freeSpace := dsMo.Summary.FreeSpace
 

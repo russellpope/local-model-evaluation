@@ -2,7 +2,6 @@ package datastores
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"sync/atomic"
 	"testing"
@@ -128,39 +127,35 @@ func TestGetDatastoresExactValues(t *testing.T) {
 	}, simModel)
 }
 
-func TestRoundTripsFlatAsVMCountGrows(t *testing.T) {
+func TestRoundTripsFlatAsDatastoreCountGrows(t *testing.T) {
 	ctx := context.Background()
 
-	vmCounts := []int{2, 4, 8, 16}
+	dsCounts := []int{1, 3, 6}
 	var roundTrips []int64
 
-	for _, vmCount := range vmCounts {
+	for _, dsCount := range dsCounts {
 		simModel := simulator.VPX()
-		simModel.Machine = vmCount
-		simModel.Host = 0
-		simModel.Cluster = 1
-		simModel.ClusterHost = 1
-		simModel.Portgroup = 2
+		simModel.Datacenter = 1
+		simModel.Datastore = dsCount
 
 		c, rt := newCountingClient(t, ctx, simModel)
 
 		_, err := GetDatastores(ctx, c)
 		if err != nil {
-			t.Fatalf("GetDatastores() with %d VMs error = %v", vmCount, err)
+			t.Fatalf("GetDatastores() with %d datastores error = %v", dsCount, err)
 		}
 
 		calls := rt.Calls()
 		roundTrips = append(roundTrips, calls)
-		t.Logf("VM count=%d, round trips=%d", vmCount, calls)
+		t.Logf("Datastore count=%d, round trips=%d", dsCount, calls)
 	}
 
 	for i := 1; i < len(roundTrips); i++ {
-		if roundTrips[i] > roundTrips[0]*2 {
-			t.Errorf("round trips grew from %d (2 VMs) to %d (%d VMs); expected flat growth",
-				roundTrips[0], roundTrips[i], vmCounts[i])
+		if roundTrips[i] != roundTrips[0] {
+			t.Errorf("round trips grew from %d (%d datastores) to %d (%d datastores); expected flat growth",
+				roundTrips[0], dsCounts[0], roundTrips[i], dsCounts[i])
 		}
 	}
 
-	t.Logf("round trips across VM counts %v: %v", vmCounts, roundTrips)
-	fmt.Printf("round trips across VM counts %v: %v\n", vmCounts, roundTrips)
+	t.Logf("round trips across datastore counts %v: %v", dsCounts, roundTrips)
 }

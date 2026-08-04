@@ -71,7 +71,11 @@ func (c *HostCache) prefetch(ctx context.Context, refs []types.ManagedObjectRefe
 }
 
 func (c *HostCache) PrefetchAll(ctx context.Context) error {
-	v := view.NewContainerView(c.client, c.client.ServiceContent.RootFolder)
+	vm := view.NewManager(c.client)
+	v, err := vm.CreateContainerView(ctx, c.client.ServiceContent.RootFolder, []string{"HostSystem"}, true)
+	if err != nil {
+		return fmt.Errorf("creating container view: %w", err)
+	}
 	defer v.Destroy(ctx)
 
 	hostRefs, err := v.Find(ctx, []string{"HostSystem"}, property.Match{"name": "*"})
