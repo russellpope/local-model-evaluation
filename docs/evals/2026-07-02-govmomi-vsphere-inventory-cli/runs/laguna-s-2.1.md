@@ -779,4 +779,14 @@ a directory, failing every mutant environmentally. The honest rate is 70%. That 
 negative-control discipline this project requires, applied by a reviewer to its own instrument —
 and it is why the 70% is trustworthy where the 100% was not.
 
+**Audit-hygiene disclosure.** A stray 28-line vcsim harness (`laguna-s-2.1/main.go`,
+`simulator.VPX()` with `Machine=8 Datastore=3 Portgroup=3`) was found in the **workspace root**
+after scoring, timestamped 10:24 — eight minutes after the round's session closed (last tool call
+10:14:36, session end 10:16:29) and matching the model configuration one reviewer reported for its
+live run. It is **auditor contamination, not the model's work**, and it sits outside the submission
+tree. Verified: nothing under `vsphere-inventory/` has an mtime after session close, and the
+committed diff is 21 files all within it. The reviewer's own "audited tree never modified" claim
+was true as scoped, since it checked `vsphere-inventory/`. File removed; recorded here rather than
+dropped, on the same principle as round 1's disclosed binary rebuild.
+
 **Arc: 18 → 20 → 20 → 22.**
