@@ -20,6 +20,11 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]format.Datastor
 		return nil, fmt.Errorf("listing datacenters: %w", err)
 	}
 
+	cache := transport.NewHostCache(client)
+	if err := cache.PrefetchAll(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: pre-fetching host cache: %v\n", err)
+	}
+
 	var result []format.DatastoreInfo
 	for _, dc := range dcs {
 		finder.SetDatacenter(dc)
@@ -47,7 +52,7 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]format.Datastor
 
 			used := capacity - freeSpace
 
-			classified, err := transport.ClassifyDatastore(ctx, client, dsMo)
+			classified, err := transport.ClassifyDatastoreWithCache(ctx, client, dsMo, cache)
 			if err != nil {
 				return nil, fmt.Errorf("classifying datastore %s: %w", dsMo.Name, err)
 			}
