@@ -790,3 +790,63 @@ was true as scoped, since it checked `vsphere-inventory/`. File removed; recorde
 dropped, on the same principle as round 1's disclosed binary rebuild.
 
 **Arc: 18 → 20 → 20 → 22.**
+
+---
+
+**Round 4 — SELF-PROMPTED, MINIMAL-INFORMATION ARM. Prompt captured at
+[`REMEDIATION-round4-prompt.md`](../../../../laguna-s-2.1/REMEDIATION-round4-prompt.md); committed
+as the instrument before the round runs. Not yet run.** Branch `laguna-s-2.1-round4`, cut from
+`28e4328`; remediation baseline for diffs is `4252de1`.
+
+**The arm removes the instrument.** Rounds 1–3 each ran from a detailed artifact carrying exact
+`file:line` fixes. Round 4 supplies none — no hitlist, no fix list, no exit criteria, not even from
+the auditor. The operator sent the six-dimension score-detractors table and the auditor's "biggest
+detractors" prose, then asked the model for a prompt addressing them. **What it tests:** whether the
+model can derive *what to do* from *what went wrong*. Rounds 1–3 established it executes well on
+anything it attempts; whether it can prioritise and specify unaided is open.
+
+**Three deviations from rounds 1–3, recorded so the score is read correctly.** (a) Minimal
+information — the arm itself. (b) **Narrowed scope, operator-set**: the instruction was "address the
+2 observations", i.e. Integrity and Performance only, where rounds 1–3 covered every Critical and
+High. The stated purpose is twofold — whether a smaller scope helps the model *finish* (round 3 ran
+11.4 hours / 257 tool calls) and whether being targeted helps. Residual Highs outside those two
+dimensions (H1 `--password-stdin`, H3 `classifyVMFS` coverage, H4's four unmet exit criteria, the
+missing security regression guard) are **out of scope and must not be scored as skipped work**.
+(c) The prompt was authored inside the still-live round-3 session rather than a fresh one, so the
+model had its own 11.4-hour session in context while writing it; the round itself runs cleared, as
+before.
+
+**Workspace unchanged, and deliberately so.** Both hitlists and all five `REVIEW*` documents remain
+in place — the document-trail convention holds, confirmed with the operator. **Consequence for this
+arm, stated before the round runs:** if the model opens `HITLIST-round3.md` during the round it
+recovers a `file:line` fix list and the round is *not* a minimal-information round. Settled
+post-hoc from the session store, not assumed either way.
+
+**Auditor review of the prompt, before the round runs.** The derivation is **genuine and is the
+arm's first positive datapoint**: the prose named the techniques (ContainerView, PropertyCollector)
+and the measured cost but supplied no fix and no test design, and the model added MOR-keyed caching
+of `config.storageDevice` plus — the substantive item — a **counting `soap.RoundTripper` test
+asserting round trips stay flat as VM count grows 2 → 16**. That is a growth-invariant assertion,
+the correct shape for an N+1 test, named by no instrument in any round, and the first test design in
+this arc that would fail against the current tree. It also picked the two dimensions worth the
+points without padding the list with the −1s.
+
+Two defects, unpatched per convention. **The stale baseline is diagnostic, not cosmetic:** "read
+against `git diff 5c6c082`" names the *round-2* baseline — the same wrong commit the round-3 prompt
+carried, transcribed forward a second time. That is the carried-over-verbatim pattern CR1 charges
+against `RUN_EVIDENCE.md`, appearing here inside a prompt whose own hard rule is "do NOT write any
+claim you haven't verified against the tree", one `git log` from checkable. **And there is no
+do-not-regress section** where rounds 2 and 3 both had one, while this prompt orders the arc's
+largest refactor across every subcommand; round 3's verified gains sit directly in that blast
+radius. Regression checking at rescore weights accordingly. The exit criteria are satisfiable
+against vcsim ground truth — the round-trip criterion is measured against a counting transport
+rather than simulator output, avoiding the criterion-9 trap.
+
+**Pre-registered discriminator, restated so it cannot be fitted afterwards.** The model diagnosed
+its own failure as *"the capability is there, the engagement just isn't"* — failure as choice. The
+competing hypothesis is structural: with `preserveThinking` off, `RUN_EVIDENCE.md` was written in a
+single pass ~250 tool calls into an 11-hour session, reconstructed from a context that had stripped
+its own reasoning. **If round 4's self-report is accurate, engagement was the constraint. If it is
+wrong again** — and the narrowed scope should shorten the session, weakening the structural
+explanation — **the `preserveThinking` A/B becomes the next experiment**: identical tree, identical
+instrument, one variable.
