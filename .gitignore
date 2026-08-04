@@ -33,3 +33,6 @@ ruvector.db
 notes.txt
 graphify-out/
 .graphify_detect.json
+
+# Session scratch / handoff (never committed)
+PICKUP.md
