@@ -32,7 +32,7 @@ func TestBytes(t *testing.T) {
 	}
 }
 
-func TestBytesConsistency(t *testing.T) {
+func TestBytesExactness(t *testing.T) {
 	capacity := int64(10737418240) // 10 GiB
 	used := int64(3221225472)      // 3 GiB
 	available := capacity - used
@@ -40,10 +40,12 @@ func TestBytesConsistency(t *testing.T) {
 	usedStr := Bytes(used)
 	availStr := Bytes(available)
 
-	if usedStr == "" || availStr == "" {
-		t.Error("format output should not be empty")
+	if usedStr != "3.0 GiB" {
+		t.Errorf("Bytes(%d) = %q, want %q", used, usedStr, "3.0 GiB")
 	}
-
+	if availStr != "7.0 GiB" {
+		t.Errorf("Bytes(%d) = %q, want %q", available, availStr, "7.0 GiB")
+	}
 	if used+available != capacity {
 		t.Errorf("used + available (%d + %d) != capacity (%d)", used, available, capacity)
 	}

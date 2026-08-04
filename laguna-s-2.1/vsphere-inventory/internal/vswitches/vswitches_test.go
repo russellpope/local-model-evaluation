@@ -30,6 +30,7 @@ func TestGetSwitches(t *testing.T) {
 		}
 
 		hasStandard := false
+		hasDistributed := false
 		for _, sw := range switches {
 			if sw.Portgroup == "" {
 				t.Error("Portgroup should not be empty")
@@ -41,7 +42,6 @@ func TestGetSwitches(t *testing.T) {
 			}
 
 			validLACP := map[string]bool{
-				"enabled":  true,
 				"disabled": true,
 				"N/A":      true,
 			}
@@ -65,11 +65,21 @@ func TestGetSwitches(t *testing.T) {
 				if sw.UsedPorts != 6 {
 					t.Errorf("Standard switch %s: UsedPorts = %d, want 6", sw.Name, sw.UsedPorts)
 				}
+				if sw.Uplinks != "vmnic0" {
+					t.Errorf("Standard switch %s: Uplinks = %q, want %q", sw.Name, sw.Uplinks, "vmnic0")
+				}
+			}
+
+			if sw.Type == "distributed" {
+				hasDistributed = true
 			}
 		}
 
 		if !hasStandard {
 			t.Error("GetSwitches() should return at least one standard switch")
+		}
+		if !hasDistributed {
+			t.Error("GetSwitches() should return at least one distributed switch")
 		}
 	}, model)
 }
@@ -134,26 +144,31 @@ func TestGetVMsByPortgroup(t *testing.T) {
 			t.Fatalf("GetVMsByPortgroup() error = %v", err)
 		}
 
-		if len(vmsList) == 0 {
-			t.Fatalf("GetVMsByPortgroup(%q) should return at least one VM", portgroupName)
+		if len(vmsList) != 3 {
+			t.Fatalf("GetVMsByPortgroup(%q) returned %d VMs, want 3", portgroupName, len(vmsList))
 		}
 
 		sort.Slice(vmsList, func(i, j int) bool {
 			return vmsList[i].Name < vmsList[j].Name
 		})
 
-		for _, vm := range vmsList {
-			if vm.Name == "" {
-				t.Error("VM name should not be empty")
+		expectedNames := []string{
+			"DC0_C0_RP0_VM0",
+			"DC0_C0_RP0_VM1",
+			"DC0_C0_RP0_VM2",
+		}
+		for i, vm := range vmsList {
+			if vm.Name != expectedNames[i] {
+				t.Errorf("VM at index %d: Name = %q, want %q", i, vm.Name, expectedNames[i])
 			}
-			if vm.VCPU <= 0 {
-				t.Errorf("VM %s: VCPU = %d, want > 0", vm.Name, vm.VCPU)
+			if vm.VCPU != 1 {
+				t.Errorf("VM %s: VCPU = %d, want 1", vm.Name, vm.VCPU)
 			}
-			if vm.RAMMB <= 0 {
-				t.Errorf("VM %s: RAMMB = %d, want > 0", vm.Name, vm.RAMMB)
+			if vm.RAMMB != 32 {
+				t.Errorf("VM %s: RAMMB = %d, want 32", vm.Name, vm.RAMMB)
 			}
-			if vm.StorageBytes < 0 {
-				t.Errorf("VM %s: StorageBytes = %d, want >= 0", vm.Name, vm.StorageBytes)
+			if vm.StorageBytes != 234 {
+				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
 			}
 		}
 	}, model)

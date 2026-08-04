@@ -23,21 +23,21 @@ func TestGetVMs(t *testing.T) {
 		}
 
 		if len(vmsList) != 5 {
-			t.Errorf("GetVMs() returned %d VMs, want 5", len(vmsList))
+			t.Fatalf("GetVMs() returned %d VMs, want 5", len(vmsList))
 		}
 
 		for _, vm := range vmsList {
 			if vm.Name == "" {
 				t.Error("VM name should not be empty")
 			}
-			if vm.VCPU <= 0 {
-				t.Errorf("VM %s: VCPU = %d, want > 0", vm.Name, vm.VCPU)
+			if vm.VCPU != 1 {
+				t.Errorf("VM %s: VCPU = %d, want 1", vm.Name, vm.VCPU)
 			}
-			if vm.RAMMB <= 0 {
-				t.Errorf("VM %s: RAMMB = %d, want > 0", vm.Name, vm.RAMMB)
+			if vm.RAMMB != 32 {
+				t.Errorf("VM %s: RAMMB = %d, want 32", vm.Name, vm.RAMMB)
 			}
-			if vm.StorageBytes < 0 {
-				t.Errorf("VM %s: StorageBytes = %d, want >= 0", vm.Name, vm.StorageBytes)
+			if vm.StorageBytes != 234 {
+				t.Errorf("VM %s: StorageBytes = %d, want 234", vm.Name, vm.StorageBytes)
 			}
 		}
 	}, model)

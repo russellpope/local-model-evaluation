@@ -83,7 +83,7 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 
 					var uplinks []string
 					for _, pnic := range vsw.Pnic {
-						uplinks = append(uplinks, strings.TrimPrefix(pnic, "key-vnic-"))
+						uplinks = append(uplinks, strings.TrimPrefix(pnic, "key-vim.host.PhysicalNic-"))
 					}
 					uplinkStr := "N/A"
 					if len(uplinks) > 0 {
@@ -141,8 +141,15 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 				dvsName := "N/A"
 				if dvpMo.Config.DistributedVirtualSwitch != nil {
 					dvsRef := *dvpMo.Config.DistributedVirtualSwitch
-					dvsName = resolveDVSName(ctx, client, dvsRef)
-					usedPorts = fetchDVPortCount(ctx, client, dvsRef, dvpMo.Config.Key)
+					name, err := resolveDVSName(ctx, client, dvsRef)
+					if err != nil {
+						return nil, fmt.Errorf("resolving DVS name for portgroup %s: %w", dvpMo.Name, err)
+					}
+					dvsName = name
+					usedPorts, err = fetchDVPortCount(ctx, client, dvsRef, dvpMo.Config.Key)
+					if err != nil {
+						return nil, fmt.Errorf("fetching DVPort count for portgroup %s: %w", dvpMo.Name, err)
+					}
 				}
 
 				result = append(result, SwitchInfo{
@@ -195,26 +202,27 @@ func resolveVlanID(portConfig types.BaseDVPortSetting) string {
 	}
 }
 
-func fetchDVPortCount(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference, portgroupKey string) int {
+func fetchDVPortCount(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference, portgroupKey string) (int, error) {
 	dvs := object.NewDistributedVirtualSwitch(client, dvsRef)
 	criteria := &types.DistributedVirtualSwitchPortCriteria{
 		PortgroupKey: []string{portgroupKey},
 		Inside:       types.NewBool(true),
+		Connected:    types.NewBool(true),
 	}
 	ports, err := dvs.FetchDVPorts(ctx, criteria)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("fetching DVPorts for portgroup %s: %w", portgroupKey, err)
 	}
-	return len(ports)
+	return len(ports), nil
 }
 
-func resolveDVSName(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference) string {
+func resolveDVSName(ctx context.Context, client *vim25.Client, dvsRef types.ManagedObjectReference) (string, error) {
 	dvs := object.NewDistributedVirtualSwitch(client, dvsRef)
 	name, err := dvs.ObjectName(ctx)
 	if err != nil {
-		return "N/A"
+		return "", fmt.Errorf("resolving DVS name: %w", err)
 	}
-	return name
+	return name, nil
 }
 
 func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName string) ([]VMInfo, error) {
@@ -235,6 +243,9 @@ func GetVMsByPortgroup(ctx context.Context, client *vim25.Client, portgroupName 
 			pgRef = pg.Reference()
 			found = true
 			break
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("finding port group %q in datacenter %s: %w", portgroupName, dc.Name(), err)
 		}
 	}
 

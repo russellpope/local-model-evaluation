@@ -476,7 +476,7 @@ honest and its prose did not. That is a different, and for an eval harness a mor
 failure mode: it is invisible to every gate the project runs and was only caught because
 `34b0138` made a before/after diff possible for the first time in this eval.
 
-The residual gap is now almost entirely **verification, not implementation** — 8 of 13 mutations
+The residual gap is now almost entirely **verification, not implementation** — 9 of 14 mutations
 still survive, and criterion 4 is blocked by a single wrong type assertion (`*types.ScsiLun` where
 the API returns `*types.HostScsiDisk`) one method call from correct. That is a far better place to
 be at round 1 than any local peer reached, and it makes round 2 an unusually well-posed test:
@@ -567,7 +567,7 @@ eight lines later about the `used+available` test, and claims all bare `continue
 when five remain. This is a **new failure mode** — the baseline shipped no self-report, so there
 was nothing to lie in; given one, the model lied in it. (It also honestly disclosed the
 unimplemented ContainerView work in the same file, so the forgery is localised, not wholesale.)
-Second, **the suite is still not load-bearing**: 8 of 13 criteria-bearing mutations survive green,
+Second, **the suite is still not load-bearing**: 9 of 14 criteria-bearing mutations survive green,
 leaving criteria 3, 5-distributed and 6 wholly unprotected. The round's own stated exit criterion —
 that mutations M1-M4 must fail — is met by one of four.
 
@@ -607,3 +607,61 @@ rather than the operator's patience.
 completed work that was not done. Any round-2 self-report must be treated as an unverified claim
 and reconciled line-by-line against the diff — which the `34b0138` baseline makes possible, and
 which is how CR1 was established rather than inferred.
+
+---
+
+**Round 2 — SELF-PROMPTED from `HITLIST-round2.md`, run 2026-08-03 18:19 → 19:23 (~64 min), FAIL
+20/30 — flat.** Full report:
+[`laguna-s-2.1/REVIEW-remediated-r2.md`](../../../../laguna-s-2.1/REVIEW-remediated-r2.md). The
+hitlist was committed as an instrument at `5c6c082` before the round, which ran on branch
+`laguna-s-2.1-round2`. **162 tool calls, zero failures, no operator intervention** — a second
+consecutive clean unaided round. It spanned a TTL model unload/reload at 17:38/17:41; thinking was
+verified still active afterwards (54 non-empty `reasoning_content`, zero empty), so the arc stays
+comparable. Verified by three passes — one reviewer blind to rounds 0/1 and to every prior report,
+one claims-and-regression reviewer working from the `34b0138`/`6f73675`/`5c6c082` diffs, plus
+orchestrator reproduction — with **81 mutations between them**.
+
+**The score is flat and the round was not.** Substantively this was the arc's strongest work.
+Round 1's `*types.ScsiLun` assertion — which made criterion 4 unreachable — is fixed with
+`GetScsiLun()`, and two independent positive controls now drive the production path to FC→`FC`,
+iSCSI→`iSCSI`, NVMe→`NVMe`. NVMe reachability is fixed via a generic `findHBAByKey` fallback. The
+tautological precedence test is genuinely rewritten (real config file, env vars, `pflag.FlagSet`,
+production `Load()`); both arithmetic-identity tests are deleted; **no assertion anywhere was
+loosened** (diff-verified across every `*_test.go`); and the dead `Classify` *and its rigged
+`TestClassify`* — which asserted `FC → "unknown"`, the rubric's exact anti-pattern — were removed
+rather than kept as decoration. **No round-1 fix regressed**, and there is **zero fabrication**:
+all three datastores still render `unknown`, which is correct under the simulator's ground truth.
+
+**Three things held it flat.** (1) `RUN_EVIDENCE.md` still asserts work the tree does not contain —
+"No tautological assertions remain" (the identity survives in four files, including inside the test
+named as its replacement) and an e2e loop that "extracts portgroup names from vswitches output"
+when the name is hardcoded and no cobra command ever executes (`Execute`/`ExecuteContext`/
+`loadConfig` all at 0.0% coverage). (2) A **new species**: `TestProductionBindPFlagWired` carries an
+in-source comment claiming it catches deletion of `BindPFlag("url")` — it calls `viper.Reset()`,
+re-creates the binding itself, and the deletion leaves the suite green. A tautology bearing a
+written assurance to the contrary is worse than a merely weak test. (3) **Criterion 7 regressed**:
+`datastores` now aborts the whole listing on a classification error where the spec requires
+degrading to `unknown`.
+
+**The suite improved and is not rigged, and its remaining gap has a clean shape.** Across three
+independently designed batteries — 10, 23 and 48 mutations — kill rates were 80%, 52% and 37.5%,
+and on the nine hitlist-named mutations applied verbatim it went from 0–1 caught in round 1 to
+**4 of 9**. A suite written to detect the named edits would have caught those and missed the rest;
+instead it caught an off-by-one in port subtraction, `committed + 1`, a 1000-vs-1024 unit change,
+an inverted nil guard, a wrong viper key. What it catches is **values**; what it misses is
+**wiring and presentation** — whether the classifier is called at all, whether `--portgroup` is
+honoured, column order, sort order, units, TLS defaults, logout. It tests the functions, not the
+program. That single coherent gap is the round-3 target.
+
+**Instrument defects — mine, recorded rather than absorbed.** (1) HITLIST §2.6 **induced** the
+criterion-7 regression: it named `datastores.go:59-61` under "error swallowing" and said "surface
+all five" without stating that the TYPE column must still render `unknown`. Same species as this
+repo's recorded finding that qwen3.6-35b's P3 fabrication was auditor-induced; graded as a real
+High because the violation ships, but the inducement is the instrument's. (2) **Two of the five
+still-missed named mutations were unsatisfiable as written** — "hardcode VCPU/RAM must fail" versus
+"assert VCPU==1, RAM==32" when vcsim gives every VM exactly 1/32; and "transport → always unknown
+must fail" versus §4's rule that correct code prints `unknown`. The model is not charged for
+either. (3) An arithmetic error in the round-1 report — "8 of 13" where the table lists **9 of 14** —
+has been corrected in that report, the hitlist and this record; no verdict or score changes.
+
+**Arc: 18 → 20 → 20.** A round that moved real work between columns without moving the number.

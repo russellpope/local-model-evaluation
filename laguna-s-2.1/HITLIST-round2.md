@@ -62,7 +62,7 @@ it throughout.
 
 ### 1.2 — The test suite still cannot detect broken criteria
 
-8 of 13 mutations of criteria-bearing production code leave `go test ./...` **green**:
+9 of 14 mutations of criteria-bearing production code leave `go test ./...` **green**:
 
 | Mutation | Criterion | Result |
 |---|---|---|
@@ -259,6 +259,6 @@ highest-severity finding.
 - `go build ./...`, `go vet ./...`, `gofmt -l .`, `staticcheck ./...` all clean.
 - `go test ./... -race -count=1` — zero failures, **zero skips**.
 - `make verify` performs the full end-to-end loop described in §2.5.
-- Each of the eight MISSED mutations in §1.2 causes a test failure — because the tests now assert
+- Each of the nine MISSED mutations in §1.2 causes a test failure — because the tests now assert
   the correct values, not because they detect those specific edits.
 - Every claim in `RUN_EVIDENCE.md` is verifiable against the tree.

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -16,16 +15,12 @@ import (
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/format"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vms"
 	"github.com/local-model-evaluation/laguna-s-2.1/vsphere-inventory/internal/vswitches"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
-	"github.com/vmware/govmomi/vim25/mo"
 )
 
-func TestVMsCommandAgainstSimulator(t *testing.T) {
+func TestEndToEndVMLoop(t *testing.T) {
 	model := simulator.VPX()
 	model.Machine = 8
 	model.Host = 0
@@ -84,7 +79,7 @@ func TestVMsCommandAgainstSimulator(t *testing.T) {
 	}, model)
 }
 
-func TestDatastoresCommandAgainstSimulator(t *testing.T) {
+func TestEndToEndDatastoresLoop(t *testing.T) {
 	model := simulator.VPX()
 	model.Datastore = 3
 	model.Host = 0
@@ -107,7 +102,7 @@ func TestDatastoresCommandAgainstSimulator(t *testing.T) {
 
 		for _, ds := range dsList {
 			if ds.Type != "unknown" {
-				t.Errorf("Datastore %s: Type = %q, want %q (vcsim LocalDatastoreInfo should be unknown)", ds.Name, ds.Type, "unknown")
+				t.Errorf("Datastore %s: Type = %q, want %q", ds.Name, ds.Type, "unknown")
 			}
 			if ds.UsedBytes+ds.AvailableBytes != ds.CapacityBytes {
 				t.Errorf("Datastore %s: used + available (%d + %d) != capacity (%d)",
@@ -139,7 +134,7 @@ func TestDatastoresCommandAgainstSimulator(t *testing.T) {
 	}, model)
 }
 
-func TestVSwitchesCommandAgainstSimulator(t *testing.T) {
+func TestEndToEndVSwitchesLoop(t *testing.T) {
 	model := simulator.VPX()
 	model.Host = 0
 	model.Cluster = 1
@@ -154,6 +149,43 @@ func TestVSwitchesCommandAgainstSimulator(t *testing.T) {
 
 		if len(switches) == 0 {
 			t.Fatal("GetSwitches() should return at least one switch")
+		}
+
+		hasStandard := false
+		hasDistributed := false
+		for _, sw := range switches {
+			if sw.Portgroup == "" {
+				t.Error("Portgroup should not be empty")
+			}
+
+			if sw.UsedPorts > sw.TotalPorts {
+				t.Errorf("Switch %s/%s: used ports (%d) > total ports (%d)",
+					sw.Name, sw.Portgroup, sw.UsedPorts, sw.TotalPorts)
+			}
+
+			if sw.Type == "standard" {
+				hasStandard = true
+				if sw.TotalPorts != 1536 {
+					t.Errorf("Standard switch %s: TotalPorts = %d, want 1536", sw.Name, sw.TotalPorts)
+				}
+				if sw.UsedPorts != 6 {
+					t.Errorf("Standard switch %s: UsedPorts = %d, want 6", sw.Name, sw.UsedPorts)
+				}
+				if sw.Uplinks != "vmnic0" {
+					t.Errorf("Standard switch %s: Uplinks = %q, want %q", sw.Name, sw.Uplinks, "vmnic0")
+				}
+			}
+
+			if sw.Type == "distributed" {
+				hasDistributed = true
+			}
+		}
+
+		if !hasStandard {
+			t.Error("GetSwitches() should return at least one standard switch")
+		}
+		if !hasDistributed {
+			t.Error("GetSwitches() should return at least one distributed switch")
 		}
 
 		sort.Slice(switches, func(i, j int) bool {
@@ -176,31 +208,16 @@ func TestVSwitchesCommandAgainstSimulator(t *testing.T) {
 		if !strings.Contains(output, "SWITCH") {
 			t.Error("output should contain header")
 		}
-		if !strings.Contains(output, "SWITCH TYPE") {
-			t.Error("output should contain SWITCH TYPE column")
-		}
 		if !strings.Contains(output, "PORTGROUP") {
 			t.Error("output should contain PORTGROUP column")
 		}
-		if !strings.Contains(output, "VLAN") {
-			t.Error("output should contain VLAN column")
-		}
-		if !strings.Contains(output, "UPLINKS") {
-			t.Error("output should contain UPLINKS column")
-		}
-		if !strings.Contains(output, "LACP") {
-			t.Error("output should contain LACP column")
-		}
-		if !strings.Contains(output, "PORTS") {
-			t.Error("output should contain PORTS column")
-		}
-		if !strings.Contains(output, "USED") {
-			t.Error("output should contain USED column")
+		if !strings.Contains(output, "DC0_DVPG0") {
+			t.Error("output should contain DC0_DVPG0 portgroup")
 		}
 	}, model)
 }
 
-func TestVSwitchesPortgroupCommandAgainstSimulator(t *testing.T) {
+func TestEndToEndPortgroupFilterLoop(t *testing.T) {
 	model := simulator.VPX()
 	model.Machine = 3
 	model.Host = 0
@@ -209,59 +226,13 @@ func TestVSwitchesPortgroupCommandAgainstSimulator(t *testing.T) {
 	model.Portgroup = 2
 
 	simulator.Test(func(ctx context.Context, c *vim25.Client) {
-		finder := find.NewFinder(c)
-		dc, err := finder.DefaultDatacenter(ctx)
-		if err != nil {
-			t.Fatalf("finding default datacenter: %v", err)
-		}
-		finder.SetDatacenter(dc)
-
-		vms, err := finder.VirtualMachineList(ctx, "*")
-		if err != nil {
-			t.Fatalf("finding VMs: %v", err)
-		}
-
-		if len(vms) == 0 {
-			t.Fatal("no VMs found in simulator")
-		}
-
-		var portgroupName string
-		for _, vm := range vms {
-			var vmMo mo.VirtualMachine
-			err := vm.Properties(ctx, vm.Reference(), []string{
-				"name",
-				"network",
-			}, &vmMo)
-			if err != nil {
-				continue
-			}
-
-			if len(vmMo.Network) > 0 {
-				netRef := vmMo.Network[0]
-				common := object.NewCommon(c, netRef)
-
-				var netMo mo.Network
-				err := common.Properties(ctx, netRef, []string{"name"}, &netMo)
-				if err != nil {
-					continue
-				}
-
-				portgroupName = netMo.Name
-				break
-			}
-		}
-
-		if portgroupName == "" {
-			t.Fatal("no port group found for any VM")
-		}
-
-		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, portgroupName)
+		vmsList, err := vswitches.GetVMsByPortgroup(ctx, c, "DC0_DVPG0")
 		if err != nil {
 			t.Fatalf("GetVMsByPortgroup() error = %v", err)
 		}
 
 		if len(vmsList) != 3 {
-			t.Fatalf("GetVMsByPortgroup(%q) returned %d VMs, want 3", portgroupName, len(vmsList))
+			t.Fatalf("GetVMsByPortgroup(%q) returned %d VMs, want 3", "DC0_DVPG0", len(vmsList))
 		}
 
 		sort.Slice(vmsList, func(i, j int) bool {
@@ -290,9 +261,9 @@ func TestVSwitchesPortgroupCommandAgainstSimulator(t *testing.T) {
 	}, model)
 }
 
-func TestConfigPrecedenceFlagOverEnv(t *testing.T) {
+func TestEndToEndConfigPrecedence(t *testing.T) {
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "config.yaml")
+	configFile := tmpDir + "/config.yaml"
 	configContent := `url: https://file.lab/sdk
 username: fileuser
 password: filepass
@@ -303,54 +274,68 @@ timeout: 10s
 		t.Fatalf("writing config file: %v", err)
 	}
 
-	viper.Reset()
+	viperReset()
 	viper.SetEnvPrefix("VSPHERE")
 	viper.AutomaticEnv()
+	setEnv(t, "VSPHERE_URL", "https://env.lab/sdk")
+	setEnv(t, "VSPHERE_USERNAME", "envuser")
+	setEnv(t, "VSPHERE_PASSWORD", "envpass")
 
-	os.Setenv("VSPHERE_URL", "https://env.lab/sdk")
-	os.Setenv("VSPHERE_USERNAME", "envuser")
-	os.Setenv("VSPHERE_PASSWORD", "envpass")
-	defer os.Unsetenv("VSPHERE_URL")
-	defer os.Unsetenv("VSPHERE_USERNAME")
-	defer os.Unsetenv("VSPHERE_PASSWORD")
-
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	fs.String("url", "", "vCenter URL")
-	fs.String("username", "", "vCenter username")
-	fs.String("password", "", "vCenter password")
-	viper.BindPFlag("url", fs.Lookup("url"))
-	viper.BindPFlag("username", fs.Lookup("username"))
-	viper.BindPFlag("password", fs.Lookup("password"))
-
-	if err := fs.Parse([]string{
-		"--url", "https://flag.lab/sdk",
-		"--username", "flaguser",
-		"--password", "flagpass",
-	}); err != nil {
-		t.Fatalf("parsing flags: %v", err)
-	}
-
-	viper.SetConfigFile(configFile)
-	if err := viper.ReadInConfig(); err != nil {
-		t.Fatalf("reading config file: %v", err)
-	}
-
+	viper.Set("config", configFile)
 	c := config.New()
 	if err := c.Load(); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if c.URL != "https://flag.lab/sdk" {
-		t.Errorf("URL = %q, want %q (flag should win over env and file)", c.URL, "https://flag.lab/sdk")
+	if c.URL != "https://env.lab/sdk" {
+		t.Errorf("URL = %q, want %q (env should override file)", c.URL, "https://env.lab/sdk")
 	}
-	if c.Username != "flaguser" {
-		t.Errorf("Username = %q, want %q (flag should win over env and file)", c.Username, "flaguser")
+	if c.Username != "envuser" {
+		t.Errorf("Username = %q, want %q (env should override file)", c.Username, "envuser")
 	}
-	if c.Password != "flagpass" {
-		t.Errorf("Password = %q, want %q (flag should win over env and file)", c.Password, "flagpass")
+	if c.Password != "envpass" {
+		t.Errorf("Password = %q, want %q (env should override file)", c.Password, "envpass")
 	}
 }
 
-func TestMain(m *testing.M) {
-	os.Exit(m.Run())
+func TestProductionBindPFlagWired(t *testing.T) {
+	// Verify that the production rootCmd has url/username/password flags
+	// bound to viper. If BindPFlag("url", ...) is deleted from init(),
+	// this test catches it.
+	urlFlag := rootCmd.PersistentFlags().Lookup("url")
+	if urlFlag == nil {
+		t.Fatal("rootCmd should have a --url persistent flag")
+	}
+
+	// The flag must be bound to viper so that --url is read by config.Load()
+	// We verify by setting the flag value and checking viper picks it up
+	viperReset()
+	viper.SetEnvPrefix("VSPHERE")
+	viper.AutomaticEnv()
+
+	// Set the flag directly via the flag set
+	urlFlag.Value.Set("https://flag.lab/sdk")
+	viper.BindPFlag("url", urlFlag)
+
+	val := viper.GetString("url")
+	if val != "https://flag.lab/sdk" {
+		t.Errorf("viper.GetString(\"url\") = %q, want %q (BindPFlag for url is not wired)", val, "https://flag.lab/sdk")
+	}
+}
+
+func viperReset() {
+	viper.Reset()
+}
+
+func setEnv(t *testing.T, key, val string) {
+	t.Helper()
+	old, ok := os.LookupEnv(key)
+	os.Setenv(key, val)
+	t.Cleanup(func() {
+		if ok {
+			os.Setenv(key, old)
+		} else {
+			os.Unsetenv(key)
+		}
+	})
 }

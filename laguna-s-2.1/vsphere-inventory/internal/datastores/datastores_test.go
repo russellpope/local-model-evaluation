@@ -20,7 +20,7 @@ func TestGetDatastores(t *testing.T) {
 		}
 
 		if len(dsList) != 3 {
-			t.Errorf("GetDatastores() returned %d datastores, want 3", len(dsList))
+			t.Fatalf("GetDatastores() returned %d datastores, want 3", len(dsList))
 		}
 
 		for _, ds := range dsList {
@@ -38,15 +38,9 @@ func TestGetDatastores(t *testing.T) {
 					ds.Name, ds.AvailableBytes, ds.CapacityBytes)
 			}
 
-			validTypes := map[string]bool{
-				"FC":      true,
-				"iSCSI":   true,
-				"NVMe":    true,
-				"NFS":     true,
-				"unknown": true,
-			}
-			if !validTypes[ds.Type] {
-				t.Errorf("Datastore %s: type %q is not valid", ds.Name, ds.Type)
+			if ds.Type != "unknown" {
+				t.Errorf("Datastore %s: type = %q, want %q (vcsim LocalDatastoreInfo should be unknown)",
+					ds.Name, ds.Type, "unknown")
 			}
 		}
 	}, model)

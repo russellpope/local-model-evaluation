@@ -10,23 +10,6 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-type DeviceDescriptor struct {
-	DeviceType string
-	Model      string
-	Vendor     string
-}
-
-func Classify(descriptor DeviceDescriptor) string {
-	switch descriptor.DeviceType {
-	case "NFS", "NFS41":
-		return "NFS"
-	case "VMFS", "VMDK":
-		return "unknown"
-	default:
-		return "unknown"
-	}
-}
-
 func ClassifyDatastore(ctx context.Context, client *vim25.Client, dsMo mo.Datastore) (string, error) {
 	switch info := dsMo.Info.(type) {
 	case *types.NasDatastoreInfo:
@@ -61,7 +44,7 @@ func classifyVMFS(ctx context.Context, client *vim25.Client, dsMo mo.Datastore, 
 			"config.storageDevice",
 		}, &hostMo)
 		if err != nil {
-			continue
+			return "unknown", fmt.Errorf("retrieving properties for host %s: %w", hostRef, err)
 		}
 
 		if hostMo.Config == nil || hostMo.Config.StorageDevice == nil {
@@ -72,20 +55,24 @@ func classifyVMFS(ctx context.Context, client *vim25.Client, dsMo mo.Datastore, 
 
 		if storageDevice.ScsiLun != nil {
 			for _, baseLun := range storageDevice.ScsiLun {
-				if lun, ok := baseLun.(*types.ScsiLun); ok {
-					if lun.CanonicalName == canonicalName {
-						return classifyByScsiTopology(hostMo, lun)
-					}
+				lun := baseLun.GetScsiLun()
+				if lun.CanonicalName == canonicalName {
+					return classifyByScsiTopology(hostMo, lun)
 				}
 			}
 		}
 
 		if storageDevice.NvmeTopology != nil {
 			for _, iface := range storageDevice.NvmeTopology.Adapter {
-				for _, ctrl := range iface.ConnectedController {
-					if ctrl.AssociatedAdapter != "" && ctrl.AssociatedAdapter == canonicalName {
-						return "NVMe", nil
-					}
+				if iface.Adapter == "" {
+					continue
+				}
+				hba := findHBAByKey(storageDevice, iface.Adapter)
+				if hba == nil {
+					continue
+				}
+				if classifyHBA(hba) == "NVMe" && len(iface.ConnectedController) > 0 {
+					return "NVMe", nil
 				}
 			}
 		}
@@ -131,6 +118,9 @@ func findHBAByKey(storageDevice *types.HostStorageDeviceInfo, adapterKey string)
 				return h
 			}
 		}
+		if hba.GetHostHostBusAdapter().Key == adapterKey {
+			return hba
+		}
 	}
 	return nil
 }
@@ -142,8 +132,11 @@ func classifyHBA(hba types.BaseHostHostBusAdapter) string {
 	case *types.HostInternetScsiHba:
 		return "iSCSI"
 	default:
-		if h.GetHostHostBusAdapter().StorageProtocol == "nvme" {
+		switch h.GetHostHostBusAdapter().StorageProtocol {
+		case "nvme":
 			return "NVMe"
+		case "fcoe":
+			return "FCoE"
 		}
 		return "unknown"
 	}

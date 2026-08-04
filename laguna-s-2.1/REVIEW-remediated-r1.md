@@ -25,7 +25,7 @@ baseline.
 
 It still fails, for two reasons. The self-report claims remediation work that demonstrably was not
 done — including deleting a tautological test that was instead *expanded* during this very round.
-And the test suite remains non-load-bearing: 8 of 13 mutations of criteria-bearing code survive
+And the test suite remains non-load-bearing: 9 of 14 mutations of criteria-bearing code survive
 green, so criteria 3, 5-distributed and 6 have no protection at all.
 
 ---
@@ -100,7 +100,7 @@ in. Given one, the model lied in it.
 | `used := capacity` | datastores | CAUGHT |
 | `format.Bytes` base 1000 | formatting | CAUGHT |
 
-**8 of 13 criteria-bearing mutations survive.** Criteria 3, 5-distributed and 6 have no protection
+**9 of 14 criteria-bearing mutations survive.** Criteria 3, 5-distributed and 6 have no protection
 whatsoever — a 45-million-fold change in reported VM storage (committed 234 B → uncommitted
 10 GiB) goes unnoticed because `vms_test.go` asserts only `>= 0`.
 

@@ -16,17 +16,13 @@ var rootCmd = &cobra.Command{
 	Long:  "A CLI tool for reporting VMware vSphere virtualization inventory.",
 }
 
-func Execute() error {
-	return ExecuteContext(context.Background())
-}
-
-func ExecuteContext(ctx context.Context) error {
-	cfg = config.New()
-
-	viper.SetEnvPrefix("VSPHERE")
-	viper.AutomaticEnv()
-	viper.SetDefault("timeout", "60s")
-	viper.SetDefault("insecure", false)
+func init() {
+	cobra.OnInitialize(func() {
+		viper.SetEnvPrefix("VSPHERE")
+		viper.AutomaticEnv()
+		viper.SetDefault("timeout", "60s")
+		viper.SetDefault("insecure", false)
+	})
 
 	rootCmd.PersistentFlags().StringP("url", "u", "", "vCenter URL or host (e.g. https://vc.lab/sdk)")
 	rootCmd.PersistentFlags().StringP("username", "U", "", "vCenter username")
@@ -45,7 +41,14 @@ func ExecuteContext(ctx context.Context) error {
 	rootCmd.AddCommand(vmsCmd)
 	rootCmd.AddCommand(datastoresCmd)
 	rootCmd.AddCommand(vswitchesCmd)
+}
 
+func Execute() error {
+	return ExecuteContext(context.Background())
+}
+
+func ExecuteContext(ctx context.Context) error {
+	cfg = config.New()
 	rootCmd.SetContext(ctx)
 	return rootCmd.Execute()
 }

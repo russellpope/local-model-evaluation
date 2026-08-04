@@ -6,33 +6,6 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-func TestClassify(t *testing.T) {
-	tests := []struct {
-		name     string
-		desc     DeviceDescriptor
-		expected string
-	}{
-		{"NFS", DeviceDescriptor{DeviceType: "NFS"}, "NFS"},
-		{"NFS41", DeviceDescriptor{DeviceType: "NFS41"}, "NFS"},
-		{"FC", DeviceDescriptor{DeviceType: "FC"}, "unknown"},
-		{"iSCSI", DeviceDescriptor{DeviceType: "iSCSI"}, "unknown"},
-		{"NVMe", DeviceDescriptor{DeviceType: "NVMe"}, "unknown"},
-		{"VMFS", DeviceDescriptor{DeviceType: "VMFS"}, "unknown"},
-		{"VMDK", DeviceDescriptor{DeviceType: "VMDK"}, "unknown"},
-		{"unknown type", DeviceDescriptor{DeviceType: "unknown"}, "unknown"},
-		{"empty", DeviceDescriptor{DeviceType: ""}, "unknown"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := Classify(tt.desc)
-			if result != tt.expected {
-				t.Errorf("Classify(%+v) = %q, want %q", tt.desc, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestClassifyHBA(t *testing.T) {
 	tests := []struct {
 		name string
@@ -74,6 +47,26 @@ func TestClassifyHBA(t *testing.T) {
 				},
 			},
 			want: "unknown",
+		},
+		{
+			name: "NvmeViaStorageProtocol",
+			hba: &types.HostBlockHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key:             "key-vim.host.BlockHba-vmhba4",
+					StorageProtocol: "nvme",
+				},
+			},
+			want: "NVMe",
+		},
+		{
+			name: "FcoeViaStorageProtocol",
+			hba: &types.HostBlockHba{
+				HostHostBusAdapter: types.HostHostBusAdapter{
+					Key:             "key-vim.host.BlockHba-vmhba5",
+					StorageProtocol: "fcoe",
+				},
+			},
+			want: "FCoE",
 		},
 	}
 

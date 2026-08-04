@@ -14,13 +14,16 @@ vet:
 fmt:
 	gofmt -l .
 
-verify: vet test
+verify: vet fmt
 	@echo "Running gofmt check..."
 	@if [ -n "$$(gofmt -l .)" ]; then echo "gofmt found issues:"; gofmt -l .; exit 1; fi
 	@echo "gofmt check passed."
 	@echo "Running build..."
 	go build -o $(BINARY) ./cmd/vsphere-inventory
 	@echo "Build successful."
-	@echo "Running integration tests against simulator..."
-	go test ./cmd/... -v -run "TestVMsCommandAgainstSimulator|TestDatastoresCommandAgainstSimulator|TestVSwitchesCommandAgainstSimulator|TestVSwitchesPortgroupCommandAgainstSimulator"
+	@echo "Running full end-to-end loop against simulator..."
+	go test ./... -race -count=1 -v -run "TestEndToEnd"
+	@echo "End-to-end loop passed."
+	@echo "Running full test suite..."
+	go test ./... -race -count=1
 	@echo "All checks passed."

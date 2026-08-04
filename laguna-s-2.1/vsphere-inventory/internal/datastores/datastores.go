@@ -42,7 +42,6 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 				"summary.type",
 				"summary.capacity",
 				"summary.freeSpace",
-				"summary.uncommitted",
 				"info",
 				"host",
 			}, &dsMo)
@@ -57,7 +56,7 @@ func GetDatastores(ctx context.Context, client *vim25.Client) ([]DatastoreInfo, 
 
 			transportType, err := transport.ClassifyDatastore(ctx, client, dsMo)
 			if err != nil {
-				transportType = "unknown"
+				return nil, fmt.Errorf("classifying datastore %s: %w", dsMo.Name, err)
 			}
 
 			result = append(result, DatastoreInfo{
