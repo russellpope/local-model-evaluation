@@ -726,10 +726,21 @@ shipped defaults.
 22/30.** Full report:
 [`laguna-s-2.1/REVIEW-remediated-r3.md`](../../../../laguna-s-2.1/REVIEW-remediated-r3.md); prompt
 captured at
-[`REMEDIATION-round3-prompt.md`](../../../../laguna-s-2.1/REMEDIATION-round3-prompt.md). **11.4
-hours of active tool use, 257 tool calls, unaided** — the single operator message arrived *after*
-the last tool call, asking whether N+1 had been done, and the model answered that it had not.
-Verified by three passes with **87 mutations** between them.
+[`REMEDIATION-round3-prompt.md`](../../../../laguna-s-2.1/REMEDIATION-round3-prompt.md). **~11.5
+hours wall clock but only ~1.75 hours of active tool use, 257 tool calls, unaided** — the single
+operator message arrived *after* the last tool call, asking whether N+1 had been done, and the model
+answered that it had not. Verified by three passes with **87 mutations** between them.
+
+> **Correction (2026-08-04).** This record previously read "11.4 hours of active tool use". That was
+> wall clock, not activity, and the distinction matters because several conclusions leaned on it.
+> Session-store forensics: the span carries **seven gaps over five minutes totalling 10.6 h**,
+> dominated by a **single 8.97-hour gap (2026-08-03 23:56:59 → 2026-08-04 08:55:01)** in which the
+> model sat blocked awaiting operator approval of a tool call overnight. Stripping only that gap
+> gives ~3.4 h; excluding all seven gives **~1.75 h of genuinely dense activity**. "Unaided" still
+> stands — no guidance was given — but the round was *not* eleven hours of continuous work, and any
+> reading of it as an exhausting long-haul session is wrong. Corrected here, in
+> `REVIEW-remediated-r4.md`, in `REMEDIATION-round4-prompt.md`'s auditor header, and in the round-4
+> handoff. **No verdict or score changes**, in either round 3 or round 4.
 
 **The arc's strongest engineering, and the first round whose tests match it.** Independently
 designed mutation batteries kill **70%** and **62.5%**, against 37.5% in round 2 — and the
@@ -809,12 +820,12 @@ anything it attempts; whether it can prioritise and specify unaided is open.
 information — the arm itself. (b) **Narrowed scope, operator-set**: the instruction was "address the
 2 observations", i.e. Integrity and Performance only, where rounds 1–3 covered every Critical and
 High. The stated purpose is twofold — whether a smaller scope helps the model *finish* (round 3 ran
-11.4 hours / 257 tool calls) and whether being targeted helps. Residual Highs outside those two
-dimensions (H1 `--password-stdin`, H3 `classifyVMFS` coverage, H4's four unmet exit criteria, the
-missing security regression guard) are **out of scope and must not be scored as skipped work**.
-(c) The prompt was authored inside the still-live round-3 session rather than a fresh one, so the
-model had its own 11.4-hour session in context while writing it; the round itself runs cleared, as
-before.
+~11.5 h wall clock / ~1.75 h active / 257 tool calls) and whether being targeted helps. Residual
+Highs outside those two dimensions (H1 `--password-stdin`, H3 `classifyVMFS` coverage, H4's four
+unmet exit criteria, the missing security regression guard) are **out of scope and must not be
+scored as skipped work**. (c) The prompt was authored inside the still-live round-3 session rather
+than a fresh one, so the model had that whole session in context while writing it; the round itself
+runs cleared, as before.
 
 **Workspace unchanged, and deliberately so.** Both hitlists and all five `REVIEW*` documents remain
 in place — the document-trail convention holds, confirmed with the operator. **Consequence for this
@@ -845,8 +856,9 @@ rather than simulator output, avoiding the criterion-9 trap.
 **Pre-registered discriminator, restated so it cannot be fitted afterwards.** The model diagnosed
 its own failure as *"the capability is there, the engagement just isn't"* — failure as choice. The
 competing hypothesis is structural: with `preserveThinking` off, `RUN_EVIDENCE.md` was written in a
-single pass ~250 tool calls into an 11-hour session, reconstructed from a context that had stripped
-its own reasoning. **If round 4's self-report is accurate, engagement was the constraint. If it is
+single pass ~250 tool calls deep, reconstructed from a context that had stripped its own reasoning.
+(The mechanism is *context depth*, not elapsed time — unaffected by the wall-clock correction above.)
+**If round 4's self-report is accurate, engagement was the constraint. If it is
 wrong again** — and the narrowed scope should shorten the session, weakening the structural
 explanation — **the `preserveThinking` A/B becomes the next experiment**: identical tree, identical
 instrument, one variable.
@@ -865,9 +877,17 @@ with **39 mutations**, each battery with an unmutated negative control.
 auditor's prose alone. Both hitlists remained in the workspace throughout, per the document-trail
 convention; it simply did not open them.
 
-**The two operator questions are both answered.** Smaller scope *did* help it finish — 46 minutes
-against round 3's 11.4 hours, for work that is architecturally larger. And being targeted produced
-the arc's first Performance engagement in four rounds.
+**The two operator questions.** Being targeted clearly worked: it produced **the arc's first
+Performance engagement in four rounds**, and that answer is unaffected by anything below.
+
+Whether a smaller scope helped it *finish* is **weaker than first recorded, and is downgraded here.**
+The original claim — "46 minutes against round 3's 11.4 hours" — rested on a wall-clock figure that
+was mostly an overnight approval wait (see the round-3 correction above). Like for like, it is **46
+min against ~1.75 h active, a ~2.3× difference, not ~15×** — and round 4 also *did less*: 4 files
+and +276/−45 against round 3's 21 files and +1147/−608. Normalised for work delivered, the speed-up
+is not clearly present at all. **The honest statement is that round 4 finished quickly and did not
+stall; it is not evidence that scope narrowing causes faster completion.** Deciding that needs a
+round where scope varies and delivered work does not.
 
 **A genuine algorithmic fix landed.** `prefetchMissing` → `property.Collector.Retrieve` with a cache
 persisting across datastores collapses the pathology the prose named — `config.storageDevice` per

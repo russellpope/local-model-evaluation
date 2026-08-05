@@ -16,7 +16,10 @@ Prior: [`REVIEW.md`](REVIEW.md), [`REVIEW-remediated-r1.md`](REVIEW-remediated-r
 
 **Critical 1, High 8, Medium 11, Low 9.**
 
-Round 3 ran **11.4 hours** of active tool use, 257 calls, unaided. It is comfortably the arc's
+Round 3 ran **~11.5 h wall clock but only ~1.75 h of active tool use** (corrected 2026-08-04: seven
+gaps over 5 min total 10.6 h, dominated by a single **8.97-hour overnight wait for operator approval
+of a tool call**, 23:56:59 → 08:55:01; "unaided" stands — the model was blocked, not helped), 257
+calls. It is comfortably the arc's
 strongest engineering, and for the first time the test suite's strength matches it: independently
 designed mutation batteries kill **70%** and **62.5%**, against 37.5% in round 2, and the named/
 unnamed gap is ~6 points — **the suite is not rigged to the hitlist's list.**

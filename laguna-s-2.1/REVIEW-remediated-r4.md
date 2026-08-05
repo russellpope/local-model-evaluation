@@ -192,7 +192,8 @@ since round 1.
 
 **The pre-registered discriminator resolves against the engagement hypothesis.** The model diagnosed
 its own failure as *"the capability is there, the engagement just isn't."* Round 4 gave it a
-46-minute session (against round 3's 11.4 hours), a two-item scope, and a self-written hard rule
+46-minute session (against round 3's **~1.75 h of active tool use** — see the correction below), a
+two-item scope, and a self-written hard rule
 reading *"Do NOT write any claim in RUN_EVIDENCE.md that you haven't verified against the tree."*
 The document still shipped 16+ false claims, three of them carried verbatim from text already
 falsified in round 3, and two reconstructed transcripts. **Neither engagement nor session length was
@@ -203,6 +204,27 @@ tree, identical instrument, one variable.
 `git diff 5c6c082` — the round-2 baseline — the same wrong commit round 3's prompt carried, one
 `git log` from checkable, inside a prompt whose hard rule is to verify every claim. The round then
 reproduced that exact pattern in its self-report.
+
+---
+
+## Correction (2026-08-04) — round 3's wall clock, and what it costs this report
+
+This report and the run record described round 3 as **"11.4 hours of active tool use."** That was
+wall clock, not activity. Session-store forensics on `ses_034af2da5ffeJ3XCQkMxqXI6Lm`: **seven gaps
+over five minutes totalling 10.6 h**, dominated by a **single 8.97-hour gap (2026-08-03 23:56:59 →
+2026-08-04 08:55:01)** in which the model sat blocked awaiting operator approval of a tool call
+overnight. Active time is **~1.75 h**, or ~3.4 h if only the overnight gap is stripped.
+
+**What this costs.** The "smaller scope helped it finish" finding is **downgraded**. Like for like it
+is 46 min against ~1.75 h — ~2.3×, not ~15× — and round 4 delivered 4 files / +276−45 against round
+3's 21 files / +1147−608. Normalised for work delivered, the speed-up may not exist. The defensible
+statement is that round 4 finished quickly and did not stall.
+
+**What survives untouched.** The verdict, all six dimension scores, every finding, the mutation
+rates, the tautology negative control, and the specification-not-execution conclusion — none depend
+on elapsed time. The `preserveThinking` structural hypothesis also survives: its mechanism is
+*context depth* (~250 tool calls deep with reasoning stripped), not hours elapsed. **"Unaided" still
+stands** — no guidance was given at any point; the model was blocked, not helped.
 
 ---
 

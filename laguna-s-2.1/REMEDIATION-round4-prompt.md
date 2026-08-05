@@ -34,14 +34,16 @@ THREE DEVIATIONS FROM ROUNDS 1-3, recorded so the score is read correctly:
  (b) NARROWED SCOPE, operator-set. The instruction was "address the 2 observations" —
      Integrity and Performance only. Rounds 1-3 covered every Critical and High. The
      operator's stated purpose is twofold: whether a smaller scope helps the model
-     FINISH (round 3 ran 11.4 hours / 257 tool calls), and whether being targeted
+     FINISH (round 3 ran ~11.5 h wall clock but only ~1.75 h ACTIVE / 257 tool
+     calls -- corrected 2026-08-04; the original "11.4 hours" was mostly an
+     overnight approval wait), and whether being targeted
      helps. Residual Highs outside those two dimensions (H1 --password-stdin, H3
      classifyVMFS coverage, H4's four unmet exit criteria, the missing security
      regression guard) are therefore NOT in scope and must not be scored as skipped
      work in round 4.
  (c) AUTHORED IN AN UNCLEARED CONTEXT. Unlike round 3's prompt, this was written
-     inside the still-live round-3 session, so the model had its own 11.4-hour
-     remediation session in context while authoring. The ROUND itself is to run in a
+     inside the still-live round-3 session, so the model had that whole remediation
+     session in context while authoring. The ROUND itself is to run in a
      cleared context as before; only the authoring differs.
 
 WORKSPACE CONDITION — unchanged, and deliberately so. Both HITLIST-round2.md and
@@ -94,7 +96,7 @@ PRE-REGISTERED DISCRIMINATOR (from the run record; restated here so it cannot be
 fitted afterwards). The model diagnosed its own failure as "the capability is there,
 the engagement just isn't" — framing it as choice. The competing hypothesis is
 structural: with preserveThinking off, RUN_EVIDENCE.md was written in a single pass
-~250 tool calls into an 11-hour session, reconstructed from a context that had
+~250 tool calls deep (context depth, not elapsed time), reconstructed from a context that had
 stripped its own reasoning. If round 4's self-report is ACCURATE, engagement was the
 constraint. If it is wrong again — and the narrowed scope should shorten the session,
 weakening the structural explanation — the preserveThinking A/B becomes the next
