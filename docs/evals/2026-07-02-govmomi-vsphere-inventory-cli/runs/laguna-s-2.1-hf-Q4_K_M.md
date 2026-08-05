@@ -2,8 +2,8 @@
 name: laguna-s-2.1-hf-Q4_K_M
 created: 2026-08-04
 model: Laguna S 2.1 (Poolside, arch laguna, HuggingFace GGUF — file named `-Q4_K_M` but actually MOSTLY_Q8_0 mixed-precision, 89.4 GiB single shard, 814 tensors; 118B total / ~8B active, 256 experts / 10 used + 1 shared, interleaved SWA-512 + global attention; local on Apple M5 Max 128 GiB via self-built llama.cpp llama-server; driven via opencode)
-stage: wired
-score:
+stage: audited
+score: 16 / 30
 ---
 
 # Run — laguna-s-2.1-hf-Q4_K_M
