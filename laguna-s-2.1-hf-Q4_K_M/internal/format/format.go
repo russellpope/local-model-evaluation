@@ -26,3 +26,7 @@ func HumanBytesFloat(bytes float64) string {
 func GB(bytes int64) float64 {
 	return float64(bytes) / float64(GiB)
 }
+
+func UsedBytes(total, available int64) int64 {
+	return total - available
+}

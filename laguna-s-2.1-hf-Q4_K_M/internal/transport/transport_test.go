@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/vmware/govmomi/vim25/types"
@@ -72,9 +71,9 @@ func TestClassifyNFSTransport(t *testing.T) {
 
 func TestTransportConstants(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		transport Transport
-		expected string
+		expected  string
 	}{
 		{"FC", TransportFC, "FC"},
 		{"iSCSI", TransportISCSI, "iSCSI"},
@@ -92,13 +91,24 @@ func TestTransportConstants(t *testing.T) {
 	}
 }
 
-func TestClassifyHBAFromInterfaceType(t *testing.T) {
-	hba := &types.HostFibreChannelHba{}
-	typ := reflect.TypeOf(hba)
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
+func TestClassifyHBAFromInterfaceUnknownTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		hba      types.BaseHostHostBusAdapter
+		expected Transport
+	}{
+		{"BlockHba", &types.HostBlockHba{}, TransportUnknown},
+		{"ParallelScsiHba", &types.HostParallelScsiHba{}, TransportUnknown},
+		{"RdmaHba", &types.HostRdmaHba{}, TransportUnknown},
+		{"SerialAttachedHba", &types.HostSerialAttachedHba{}, TransportUnknown},
 	}
-	if typ.Name() != "HostFibreChannelHba" {
-		t.Errorf("expected type name HostFibreChannelHba, got %s", typ.Name())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ClassifyHBAFromInterface(tt.hba)
+			if result != tt.expected {
+				t.Errorf("ClassifyHBAFromInterface() = %q, want %q", result, tt.expected)
+			}
+		})
 	}
 }

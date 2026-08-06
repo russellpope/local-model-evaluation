@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
@@ -56,24 +55,26 @@ func GetSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error
 }
 
 func getStandardSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInfo, error) {
-	finder := find.NewFinder(client)
+	m := view.NewManager(client)
 
-	hostRefs, err := finder.HostSystemList(ctx, "*")
+	v, err := m.CreateContainerView(ctx, client.ServiceContent.RootFolder, []string{"HostSystem"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("list hosts: %w", err)
+		return nil, fmt.Errorf("create container view for hosts: %w", err)
+	}
+	defer v.Destroy(ctx)
+
+	var hosts []mo.HostSystem
+
+	props := []string{"name", "config.network"}
+
+	if err := v.Retrieve(ctx, []string{"HostSystem"}, props, &hosts); err != nil {
+		return nil, fmt.Errorf("retrieve hosts: %w", err)
 	}
 
 	var results []SwitchInfo
+	seen := make(map[string]bool)
 
-	for _, hostRef := range hostRefs {
-		var hostMo mo.HostSystem
-
-		props := []string{"name", "config.network"}
-
-		if err := hostRef.Properties(ctx, hostRef.Reference(), props, &hostMo); err != nil {
-			return nil, fmt.Errorf("retrieve host %q properties: %w", hostRef.Name(), err)
-		}
-
+	for _, hostMo := range hosts {
 		if hostMo.Config == nil || hostMo.Config.Network == nil {
 			continue
 		}
@@ -95,6 +96,12 @@ func getStandardSwitches(ctx context.Context, client *vim25.Client) ([]SwitchInf
 				if pg.Spec.VswitchName != vswitch.Name {
 					continue
 				}
+
+				key := vswitch.Name + "\x00" + pg.Spec.Name
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
 
 				vlan := formatStandardVLAN(pg.Spec.VlanId)
 
@@ -132,21 +139,22 @@ func getDistributedSwitches(ctx context.Context, client *vim25.Client) ([]Switch
 	var results []SwitchInfo
 
 	for _, dvsMo := range dvsList {
-		lacp := "disabled"
-		var ports int32
+		lacp := "N/A"
 		var uplinkName string
 
 		if dvsMo.Config != nil {
-			config := dvsMo.Config.GetDVSConfigInfo()
-			ports = config.NumPorts
-
 			if vmwareConfig, ok := dvsMo.Config.(*types.VMwareDVSConfigInfo); ok {
 				if len(vmwareConfig.LacpGroupConfig) > 0 {
 					lacp = "enabled"
 				}
 
 				if len(vmwareConfig.UplinkPortgroup) > 0 {
-					uplinkName = vmwareConfig.UplinkPortgroup[0].Value
+					uplinkRef := vmwareConfig.UplinkPortgroup[0]
+					pg := object.NewDistributedVirtualPortgroup(client, uplinkRef)
+					var uplinkPgMo mo.DistributedVirtualPortgroup
+					if err := pg.Properties(ctx, uplinkRef, []string{"name"}, &uplinkPgMo); err == nil && uplinkPgMo.Name != "" {
+						uplinkName = uplinkPgMo.Name
+					}
 				}
 			}
 		}
@@ -158,7 +166,7 @@ func getDistributedSwitches(ctx context.Context, client *vim25.Client) ([]Switch
 		for _, pgRef := range dvsMo.Portgroup {
 			var pgMo mo.DistributedVirtualPortgroup
 
-			props := []string{"name", "config.defaultPortConfig", "key"}
+			props := []string{"name", "config", "key", "portKeys"}
 
 			dvp := object.NewDistributedVirtualPortgroup(client, pgRef)
 			if err := dvp.Properties(ctx, pgRef, props, &pgMo); err != nil {
@@ -170,6 +178,11 @@ func getDistributedSwitches(ctx context.Context, client *vim25.Client) ([]Switch
 				vlan = formatDVPortgroupVLAN(pgMo.Config.DefaultPortConfig)
 			}
 
+			usedPorts := int32(len(pgMo.PortKeys))
+			if usedPorts > pgMo.Config.NumPorts {
+				usedPorts = pgMo.Config.NumPorts
+			}
+
 			results = append(results, SwitchInfo{
 				SwitchName:    dvsMo.Name,
 				SwitchType:    "distributed",
@@ -177,8 +190,8 @@ func getDistributedSwitches(ctx context.Context, client *vim25.Client) ([]Switch
 				VLAN:          vlan,
 				Uplinks:       uplinkName,
 				LACP:          lacp,
-				Ports:         ports,
-				UsedPorts:     0,
+				Ports:         pgMo.Config.NumPorts,
+				UsedPorts:     usedPorts,
 			})
 		}
 	}
@@ -239,24 +252,25 @@ func GetVMsForPortGroup(ctx context.Context, client *vim25.Client, portGroupName
 		return nil, fmt.Errorf("find distributed port group: %w", err)
 	}
 
-	finder := find.NewFinder(client)
+	m := view.NewManager(client)
 
-	vms, err := finder.VirtualMachineList(ctx, "*")
+	v, err := m.CreateContainerView(ctx, client.ServiceContent.RootFolder, []string{"VirtualMachine"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("list virtual machines: %w", err)
+		return nil, fmt.Errorf("create container view for VMs: %w", err)
+	}
+	defer v.Destroy(ctx)
+
+	var vms []mo.VirtualMachine
+
+	props := []string{"name", "config.hardware.device"}
+
+	if err := v.Retrieve(ctx, []string{"VirtualMachine"}, props, &vms); err != nil {
+		return nil, fmt.Errorf("retrieve VMs: %w", err)
 	}
 
 	var results []VMInfo
 
-	for _, vmRef := range vms {
-		var vmMo mo.VirtualMachine
-
-		props := []string{"name", "config.hardware.device"}
-
-		if err := vmRef.Properties(ctx, vmRef.Reference(), props, &vmMo); err != nil {
-			return nil, fmt.Errorf("retrieve VM %q properties: %w", vmRef.Name(), err)
-		}
-
+	for _, vmMo := range vms {
 		if vmMo.Config == nil || vmMo.Config.Hardware.Device == nil {
 			continue
 		}
@@ -307,26 +321,23 @@ func GetVMsForPortGroup(ctx context.Context, client *vim25.Client, portGroupName
 func findDistributedPortGroupKeys(ctx context.Context, client *vim25.Client, portGroupName string) (map[string]bool, error) {
 	keys := make(map[string]bool)
 
-	finder := find.NewFinder(client)
+	m := view.NewManager(client)
 
-	networks, err := finder.NetworkList(ctx, "*")
+	v, err := m.CreateContainerView(ctx, client.ServiceContent.RootFolder, []string{"DistributedVirtualPortgroup"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("list networks: %w", err)
+		return nil, fmt.Errorf("create container view for port groups: %w", err)
+	}
+	defer v.Destroy(ctx)
+
+	var pgs []mo.DistributedVirtualPortgroup
+
+	props := []string{"name", "key", "config.key"}
+
+	if err := v.Retrieve(ctx, []string{"DistributedVirtualPortgroup"}, props, &pgs); err != nil {
+		return nil, fmt.Errorf("retrieve port groups: %w", err)
 	}
 
-	for _, net := range networks {
-		dvp, ok := net.(*object.DistributedVirtualPortgroup)
-		if !ok {
-			continue
-		}
-
-		var pgMo mo.DistributedVirtualPortgroup
-		props := []string{"name", "key"}
-
-		if err := dvp.Properties(ctx, dvp.Reference(), props, &pgMo); err != nil {
-			continue
-		}
-
+	for _, pgMo := range pgs {
 		if pgMo.Name == portGroupName {
 			if pgMo.Key != "" {
 				keys[pgMo.Key] = true

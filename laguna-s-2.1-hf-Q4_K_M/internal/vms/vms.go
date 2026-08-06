@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 )
@@ -19,32 +18,15 @@ type VMInfo struct {
 }
 
 func GetVMs(ctx context.Context, client *vim25.Client) ([]VMInfo, error) {
-	finder := find.NewFinder(client)
+	m := view.NewManager(client)
 
-	vms, err := finder.VirtualMachineList(ctx, "*")
+	v, err := m.CreateContainerView(ctx, client.ServiceContent.RootFolder, []string{"VirtualMachine"}, true)
 	if err != nil {
-		return nil, fmt.Errorf("list virtual machines: %w", err)
+		return nil, fmt.Errorf("create container view: %w", err)
 	}
+	defer v.Destroy(ctx)
 
-	var results []VMInfo
-
-	for _, vm := range vms {
-		info, err := getVMInfo(ctx, vm)
-		if err != nil {
-			return nil, fmt.Errorf("get VM info for %q: %w", vm.Name(), err)
-		}
-		results = append(results, info)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Name < results[j].Name
-	})
-
-	return results, nil
-}
-
-func getVMInfo(ctx context.Context, vm *object.VirtualMachine) (VMInfo, error) {
-	var vmMo mo.VirtualMachine
+	var vms []mo.VirtualMachine
 
 	props := []string{
 		"name",
@@ -53,22 +35,32 @@ func getVMInfo(ctx context.Context, vm *object.VirtualMachine) (VMInfo, error) {
 		"summary.storage.committed",
 	}
 
-	if err := vm.Properties(ctx, vm.Reference(), props, &vmMo); err != nil {
-		return VMInfo{}, fmt.Errorf("retrieve VM properties: %w", err)
+	if err := v.Retrieve(ctx, []string{"VirtualMachine"}, props, &vms); err != nil {
+		return nil, fmt.Errorf("retrieve VMs: %w", err)
 	}
 
-	info := VMInfo{
-		Name: vmMo.Name,
+	var results []VMInfo
+
+	for _, vmMo := range vms {
+		info := VMInfo{
+			Name: vmMo.Name,
+		}
+
+		if vmMo.Config != nil {
+			info.VCPU = vmMo.Config.Hardware.NumCPU
+			info.RAM = vmMo.Config.Hardware.MemoryMB
+		}
+
+		if vmMo.Summary.Storage != nil {
+			info.Storage = vmMo.Summary.Storage.Committed
+		}
+
+		results = append(results, info)
 	}
 
-	if vmMo.Config != nil {
-		info.VCPU = vmMo.Config.Hardware.NumCPU
-		info.RAM = vmMo.Config.Hardware.MemoryMB
-	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Name < results[j].Name
+	})
 
-	if vmMo.Summary.Storage != nil {
-		info.Storage = vmMo.Summary.Storage.Committed
-	}
-
-	return info, nil
+	return results, nil
 }

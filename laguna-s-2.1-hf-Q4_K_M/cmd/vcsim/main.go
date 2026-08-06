@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,6 +23,7 @@ func main() {
 		clusterHosts int
 		dcCount      int
 		standalone   bool
+		port         int
 	)
 
 	flag.IntVar(&vmCount, "vm", 2, "number of VMs per resource pool")
@@ -32,6 +34,7 @@ func main() {
 	flag.IntVar(&clusterHosts, "clusterHost", 0, "number of hosts per cluster")
 	flag.IntVar(&dcCount, "dc", 1, "number of datacenters")
 	flag.BoolVar(&standalone, "esx", false, "run as standalone ESX (not vCenter)")
+	flag.IntVar(&port, "port", 0, "port to listen on (0 = random)")
 
 	flag.Parse()
 
@@ -65,6 +68,13 @@ func main() {
 
 	model.Service.TLS = new(tls.Config)
 	model.Service.RegisterEndpoints = true
+
+	if port > 0 {
+		model.Service.Listen = &url.URL{
+			Scheme: "https",
+			Host:   fmt.Sprintf("127.0.0.1:%d", port),
+		}
+	}
 
 	s := model.Service.NewServer()
 	defer s.Close()

@@ -94,9 +94,9 @@ func TestUsedEqualsTotalMinusAvailable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			used := tt.total - tt.available
+			used := UsedBytes(tt.total, tt.available)
 			if used != tt.expected {
-				t.Errorf("used = %d, want %d", used, tt.expected)
+				t.Errorf("UsedBytes(%d, %d) = %d, want %d", tt.total, tt.available, used, tt.expected)
 			}
 			if used < 0 {
 				t.Errorf("used should not be negative: %d", used)

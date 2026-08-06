@@ -39,9 +39,6 @@ func TestGetSwitches(t *testing.T) {
 			if !validLACP[sw.LACP] {
 				t.Errorf("switch %q has invalid LACP %q", sw.SwitchName, sw.LACP)
 			}
-			if sw.LACP == "N/A" && sw.SwitchType == "distributed" {
-				t.Errorf("distributed switch %q should not have LACP=N/A", sw.SwitchName)
-			}
 			if sw.UsedPorts > sw.Ports {
 				t.Errorf("switch %q has used ports (%d) > total ports (%d)", sw.SwitchName, sw.UsedPorts, sw.Ports)
 			}

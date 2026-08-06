@@ -52,5 +52,8 @@ func (c *Client) Logout(ctx context.Context) error {
 }
 
 func (c *Client) Vim25() *vim25.Client {
+	if c.APIClient == nil {
+		return nil
+	}
 	return c.APIClient.Client
 }

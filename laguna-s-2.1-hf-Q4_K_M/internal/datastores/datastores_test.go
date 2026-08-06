@@ -2,10 +2,12 @@ package datastores
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/local-model-evaluation/vsphere-inventory-cli/internal/transport"
 )
@@ -39,6 +41,9 @@ func TestGetDatastores(t *testing.T) {
 			if !validTypes[ds.Type] {
 				t.Errorf("datastore %q has invalid type %q", ds.Name, ds.Type)
 			}
+			if strings.HasPrefix(ds.Name, "Local") && ds.Type == transport.TransportNVMe {
+				t.Errorf("local datastore %q should not report NVMe transport, got %q", ds.Name, ds.Type)
+			}
 			if ds.Capacity < 0 {
 				t.Errorf("datastore %q has negative capacity: %d", ds.Name, ds.Capacity)
 			}
@@ -60,6 +65,29 @@ func TestGetDatastores(t *testing.T) {
 			}
 		}
 	}, model)
+}
+
+func TestClassifyTargetTransport(t *testing.T) {
+	tests := []struct {
+		name      string
+		transport types.BaseHostTargetTransport
+		expected  transport.Transport
+	}{
+		{"FibreChannel", &types.HostFibreChannelTargetTransport{}, transport.TransportFC},
+		{"iSCSI", &types.HostInternetScsiTargetTransport{}, transport.TransportISCSI},
+		{"PCIe", &types.HostPcieTargetTransport{}, transport.TransportNVMe},
+		{"BlockAdapter", &types.HostBlockAdapterTargetTransport{}, transport.TransportUnknown},
+		{"nil", nil, transport.TransportUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := classifyTargetTransport(tt.transport)
+			if result != tt.expected {
+				t.Errorf("classifyTargetTransport(%T) = %q, want %q", tt.transport, result, tt.expected)
+			}
+		})
+	}
 }
 
 func TestGetDatastoresDefault(t *testing.T) {

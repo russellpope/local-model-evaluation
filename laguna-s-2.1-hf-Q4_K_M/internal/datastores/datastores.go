@@ -130,7 +130,7 @@ func classifyTargetTransport(t types.BaseHostTargetTransport) transport.Transpor
 	case *types.HostPcieTargetTransport:
 		return transport.TransportNVMe
 	case *types.HostBlockAdapterTargetTransport:
-		return transport.TransportNVMe
+		return transport.TransportUnknown
 	default:
 		return transport.TransportUnknown
 	}

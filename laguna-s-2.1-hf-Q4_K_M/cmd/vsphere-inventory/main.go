@@ -200,8 +200,7 @@ func printVMs(results []vms.VMInfo) {
 
 	fmt.Fprintf(w, "NAME\tVCPU\tRAM\tSTORAGE\n")
 	for _, vm := range results {
-		ramGB := float64(vm.RAM) / float64(1024)
-		fmt.Fprintf(w, "%s\t%d\t%.1f GB\t%s\n", vm.Name, vm.VCPU, ramGB, format.HumanBytes(vm.Storage))
+		fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", vm.Name, vm.VCPU, format.HumanBytes(int64(vm.RAM)*format.MiB), format.HumanBytes(vm.Storage))
 	}
 }
 
