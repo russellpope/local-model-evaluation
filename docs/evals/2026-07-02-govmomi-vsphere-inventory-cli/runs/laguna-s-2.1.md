@@ -959,3 +959,33 @@ either scale and the record keeps 5 for arc consistency, exactly as round 3 did.
 **Arc: 18 → 20 → 20 → 22 → 22.** Accuracy 5, Integrity 2, Security 4, Performance 2→**3**,
 Concurrency 5, Quality 4→**3**. A second flat round that moved real work between columns — this time
 in both directions.
+
+### Behavioural mutation battery (2026-08-06, post-r4 tree)
+
+Per the mutation-battery reporting convention (spine `docs/mutation-battery-checklist.md`;
+runner: `/model-eval` skill `scripts/mutate.py`, spec `../mutation-specs/laguna.json`).
+Run evidence: spine `docs/research/2026-08-06-mutation-battery-repro/laguna.log`
+(reproduction batch, fresh scratch copy, green baseline). B7/B8 are `[report-only]`
+per the convention (near-untestable in the prescribed `simulator.Test` style) — the
+spec has carried `"report_only": true` on both since 2026-08-06; the evidence log
+predates the marker so its matrix shows them unstarred.
+
+| Probe | Verdict | Mutation |
+|---|---|---|
+| B1-invoke | KILLED | transport classifier short-circuited to constant "FC" |
+| B2-flag | KILLED | `--portgroup` flag silently ignored |
+| B3-colorder | SURVIVED | USED and AVAILABLE columns swapped |
+| B4-colgone | KILLED | LACP column deleted from vswitches header |
+| B5-sort | KILLED | VM sort order reversed |
+| B6-units | KILLED | RAM off by 1024× (MB treated as KB) |
+| B7-tls | SURVIVED\* [report-only] | TLS verification unconditionally skipped |
+| B8-logout | SURVIVED\* [report-only] | session `Logout` deleted (session leak) |
+
+kill rate (raw): **5/8 = 62%** (excluded: 0 no-site, 0 build-err)
+kill rate (scorable): **5/6 = 83%** (excluded: 2 report-only, 0 no-site, 0 build-err)
+
+Distinct-cause summary: **3 survivors, 2 causes** — B3: `format_test.go:150-159`
+asserts USED-before-AVAILABLE in the *header* only; row values are unasserted (a
+row-level golden line would kill it). B7/B8: client-construction and command-level
+teardown sit outside the prescribed `simulator.Test` seam (report-only, unscored;
+harness question filed against this eval as future work).

@@ -1,0 +1,60 @@
+[
+ {
+  "id": "B1-invoke",
+  "file": "pkg/inventory/datastores.go",
+  "desc": "transport classifier short-circuited to constant FC",
+  "find": "func classifyDatastoreTransport(ds *mo.Datastore) string {",
+  "replace": "func classifyDatastoreTransport(ds *mo.Datastore) string {\n\tif true {\n\t\treturn \"FC\"\n\t}"
+ },
+ {
+  "id": "B2-flag",
+  "file": "cmd/vswitches.go",
+  "desc": "--portgroup flag silently ignored",
+  "find": "\tif portgroup != \"\" {",
+  "replace": "\tif false {"
+ },
+ {
+  "id": "B3-colorder",
+  "file": "cmd/datastores.go",
+  "desc": "USED and AVAILABLE row values swapped",
+  "find": "\t\t\tformat.HumanBytes(ds.Used),\n\t\t\tformat.HumanBytes(ds.Available),",
+  "replace": "\t\t\tformat.HumanBytes(ds.Available),\n\t\t\tformat.HumanBytes(ds.Used),"
+ },
+ {
+  "id": "B4-colgone",
+  "file": "cmd/vswitches.go",
+  "desc": "LACP column deleted from vswitches header",
+  "find": "\"SWITCH\\tTYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tLACP\\tPORTS\\tUSED\"",
+  "replace": "\"SWITCH\\tTYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tPORTS\\tUSED\""
+ },
+ {
+  "id": "B5-sort",
+  "file": "cmd/vms.go",
+  "desc": "VM sort order reversed",
+  "find": "\tsort.Slice(vms, func(i, j int) bool {\n\t\treturn vms[i].Name < vms[j].Name\n\t})",
+  "replace": "\tsort.Slice(vms, func(i, j int) bool {\n\t\treturn vms[i].Name > vms[j].Name\n\t})"
+ },
+ {
+  "id": "B6-units",
+  "file": "cmd/vms.go",
+  "desc": "RAM off by 1024x",
+  "find": "\t\t\tformat.GBString(uint64(vm.RAMMB)),",
+  "replace": "\t\t\tformat.GBString(uint64(vm.RAMMB)*1024),"
+ },
+ {
+  "id": "B7-tls",
+  "file": "cmd/root.go",
+  "desc": "TLS verification unconditionally skipped",
+  "find": "client, err := govmomi.NewClient(ctx, endpoint, cfg.Insecure)",
+  "replace": "client, err := govmomi.NewClient(ctx, endpoint, true)",
+  "report_only": true
+ },
+ {
+  "id": "B8-logout",
+  "file": "cmd/root.go",
+  "desc": "session Logout deleted (session leak)",
+  "find": "\t\tif logoutErr := client.Logout(context.Background()); logoutErr != nil {",
+  "replace": "\t\tif logoutErr := error(nil); logoutErr != nil {",
+  "report_only": true
+ }
+]

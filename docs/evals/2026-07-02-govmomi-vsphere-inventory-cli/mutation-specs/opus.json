@@ -1,0 +1,60 @@
+[
+ {
+  "id": "B1-invoke",
+  "file": "internal/inventory/helpers.go",
+  "desc": "transport classifier short-circuited to constant \"FC\"",
+  "find": "func ClassifyTransport(d StorageAdapterDescriptor) string {",
+  "replace": "func ClassifyTransport(d StorageAdapterDescriptor) string {\n\treturn \"FC\"\n\t//"
+ },
+ {
+  "id": "B2-flag",
+  "file": "cmd/root.go",
+  "desc": "--portgroup flag silently ignored",
+  "find": "if portgroupFlag != \"\" {",
+  "replace": "if false {"
+ },
+ {
+  "id": "B3-colorder",
+  "file": "cmd/root.go",
+  "desc": "USED and AVAILABLE columns swapped",
+  "find": "fmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\n\",\n\t\t\td.Name, d.Type, inventory.FormatBytes(d.UsedBytes()), inventory.FormatBytes(d.FreeBytes))",
+  "replace": "fmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\n\",\n\t\t\td.Name, d.Type, inventory.FormatBytes(d.FreeBytes), inventory.FormatBytes(d.UsedBytes()))"
+ },
+ {
+  "id": "B4-colgone",
+  "file": "cmd/root.go",
+  "desc": "LACP column deleted from vswitches header",
+  "find": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tLACP\\tPORTS\\tUSED\"",
+  "replace": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tPORTS\\tUSED\""
+ },
+ {
+  "id": "B5-sort",
+  "file": "internal/inventory/retrieve.go",
+  "desc": "VM sort order reversed",
+  "find": "out := make([]VMInfo, 0, len(vms))",
+  "replace": "out := make([]VMInfo, 0, len(vms))\n\tdefer func() { sort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name }) }()"
+ },
+ {
+  "id": "B6-units",
+  "file": "cmd/root.go",
+  "desc": "RAM printed in MB but still labelled GB",
+  "find": "return fmt.Sprintf(\"%.1f GB\", float64(memoryMB)/1024.0)",
+  "replace": "return fmt.Sprintf(\"%.1f GB\", float64(memoryMB))"
+ },
+ {
+  "id": "B7-tls",
+  "file": "cmd/root.go",
+  "desc": "TLS verification unconditionally skipped",
+  "find": "gc, err := govmomi.NewClient(ctx, u, cfg.Insecure)",
+  "replace": "gc, err := govmomi.NewClient(ctx, u, true)",
+  "report_only": true
+ },
+ {
+  "id": "B8-logout",
+  "file": "cmd/root.go",
+  "desc": "session Logout deleted (session leak)",
+  "find": "_ = gc.Logout(logoutCtx)",
+  "replace": "_ = logoutCtx",
+  "report_only": true
+ }
+]

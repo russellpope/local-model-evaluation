@@ -1,0 +1,60 @@
+[
+ {
+  "id": "B1-invoke",
+  "file": "internal/transport/transport.go",
+  "desc": "transport classifier short-circuited to constant \"FC\"",
+  "find": "func ClassifyDatastore(ctx context.Context, client *vim25.Client, dsMo mo.Datastore) (ClassifyResult, error) {",
+  "replace": "func ClassifyDatastore(ctx context.Context, client *vim25.Client, dsMo mo.Datastore) (ClassifyResult, error) {\n\tif true {\n\t\treturn ClassifyResult{Type: \"FC\"}, nil\n\t}"
+ },
+ {
+  "id": "B2-flag",
+  "file": "cmd/vswitches.go",
+  "desc": "--portgroup flag silently ignored",
+  "find": "if portgroupFilter != \"\" {",
+  "replace": "if false {"
+ },
+ {
+  "id": "B3-colorder",
+  "file": "internal/format/format.go",
+  "desc": "USED and AVAILABLE columns swapped",
+  "find": "fmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\n\", ds.Name, ds.Type, Bytes(ds.UsedBytes), Bytes(ds.AvailableBytes))",
+  "replace": "fmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\n\", ds.Name, ds.Type, Bytes(ds.AvailableBytes), Bytes(ds.UsedBytes))"
+ },
+ {
+  "id": "B4-colgone",
+  "file": "internal/format/format.go",
+  "desc": "LACP column deleted from vswitches header",
+  "find": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tLACP\\tPORTS\\tUSED\"",
+  "replace": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tPORTS\\tUSED\""
+ },
+ {
+  "id": "B5-sort",
+  "file": "internal/format/format.go",
+  "desc": "VM sort order reversed",
+  "find": "\treturn vms[i].Name < vms[j].Name",
+  "replace": "\treturn vms[i].Name > vms[j].Name"
+ },
+ {
+  "id": "B6-units",
+  "file": "internal/format/format.go",
+  "desc": "RAM off by 1024x (MB treated as KB)",
+  "find": "return Bytes(int64(ramMB) * 1024 * 1024)",
+  "replace": "return Bytes(int64(ramMB) * 1024)"
+ },
+ {
+  "id": "B7-tls",
+  "file": "internal/config/client.go",
+  "desc": "TLS verification unconditionally skipped",
+  "find": "soapClient := soap.NewClient(u, c.Insecure)",
+  "replace": "soapClient := soap.NewClient(u, true)",
+  "report_only": true
+ },
+ {
+  "id": "B8-logout",
+  "file": "cmd/vms.go",
+  "desc": "session Logout deleted (session leak)",
+  "find": "\t\tdefer config.Logout(ctx, client)",
+  "replace": "\t\t_ = client",
+  "report_only": true
+ }
+]

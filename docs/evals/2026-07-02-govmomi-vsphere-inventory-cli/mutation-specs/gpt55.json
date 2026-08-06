@@ -1,0 +1,60 @@
+[
+ {
+  "id": "B1-invoke",
+  "file": "inventory.go",
+  "desc": "transport classifier short-circuited to constant FC",
+  "find": "func ClassifyTransportDescriptor(desc string) StorageTransport {",
+  "replace": "func ClassifyTransportDescriptor(desc string) StorageTransport {\n\tif true {\n\t\treturn TransportFC\n\t}"
+ },
+ {
+  "id": "B2-flag",
+  "file": "commands.go",
+  "desc": "--portgroup flag silently ignored",
+  "find": "if portgroup != \"\" {",
+  "replace": "if false {"
+ },
+ {
+  "id": "B3-colorder",
+  "file": "output.go",
+  "desc": "USED and AVAILABLE columns swapped",
+  "find": "row.Name, row.Type, FormatBytes(row.UsedBytes), FormatBytes(row.AvailableBytes)",
+  "replace": "row.Name, row.Type, FormatBytes(row.AvailableBytes), FormatBytes(row.UsedBytes)"
+ },
+ {
+  "id": "B4-colgone",
+  "file": "output.go",
+  "desc": "LACP column deleted from vswitches header",
+  "find": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tLACP\\tPORTS\\tUSED\"",
+  "replace": "\"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tPORTS\\tUSED\""
+ },
+ {
+  "id": "B5-sort",
+  "file": "inventory.go",
+  "desc": "VM sort order reversed",
+  "find": "\tsort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })\n\treturn out, nil\n}\n\nfunc (i *Inventory) ListDatastores",
+  "replace": "\tsort.Slice(out, func(a, b int) bool { return out[a].Name > out[b].Name })\n\treturn out, nil\n}\n\nfunc (i *Inventory) ListDatastores"
+ },
+ {
+  "id": "B6-units",
+  "file": "inventory.go",
+  "desc": "RAM off by 1024x (MB treated as KB)",
+  "find": "info.RAMBytes = int64(vm.Config.Hardware.MemoryMB) * 1024 * 1024",
+  "replace": "info.RAMBytes = int64(vm.Config.Hardware.MemoryMB) * 1024"
+ },
+ {
+  "id": "B7-tls",
+  "file": "client.go",
+  "desc": "TLS verification unconditionally skipped",
+  "find": "client, err := govmomi.NewClient(ctx, u, cfg.Insecure)",
+  "replace": "client, err := govmomi.NewClient(ctx, u, true)",
+  "report_only": true
+ },
+ {
+  "id": "B8-logout",
+  "file": "commands.go",
+  "desc": "session Logout deleted (session leak)",
+  "find": "defer func() { _ = client.Logout(context.Background()) }()",
+  "replace": "_ = client",
+  "report_only": true
+ }
+]
