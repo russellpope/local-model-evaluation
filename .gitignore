@@ -3,7 +3,7 @@
 .idea/
 
 # Compiled binaries & Go test binaries
-vsphere-inventory
+/laguna-s-2.1/vsphere-inventory/vsphere-inventory
 # …but gemma-4-12b's *source directory* is named vsphere-inventory — re-include it
 # and ignore only its compiled binary (Makefile builds ./vsphere)
 !gemma-4-12b/vsphere-inventory/
@@ -36,5 +36,5 @@ graphify-out/
 
 # Session scratch / handoff (never committed)
 PICKUP.md
-laguna-s-2.1-hf-Q4_K_M/vsphere-inventory
-laguna-s-2.1-hf-Q4_K_M/vcsim
+/laguna-s-2.1-hf-Q4_K_M/vsphere-inventory
+/laguna-s-2.1-hf-Q4_K_M/vcsim
