@@ -2,15 +2,15 @@
 name: muse-glimmer-30b-bf16
 created: 2026-08-11
 model: Muse Glimmer 30B (Meta, released 2026-08-10, Apache 2.0 — dense causal transformer, ~29.6B total incl. ~1.8B ViT-G/14 perception encoder, ~27.9B language model; 52 layers, alternating SWA-2048 / global attention; 131,072+ context. Run at **BF16, native precision** from `unsloth/Muse-Glimmer-30B-GGUF` (2 shards, 55,725,511,168 B = 51.9 GiB). Local on Apple M5 Max 128 GiB via self-built llama.cpp llama-server; driven via opencode)
-stage: wired
-score:
+stage: audited
+score: 14 / 30
 ---
 
 # Run — muse-glimmer-30b-bf16
 
 ## Wire
 
-**Status: wired 2026-08-12, all gates green, eval in flight.** Directory was seeded with the eval
+**Status: audited 2026-08-12 — FAIL 14/30.** Submission frozen at `b9c9f6d` before the audit. Directory was seeded with the eval
 prompt only. The audit prompt is deliberately **not** present in the workspace — it is dropped in at
 audit time, never before. Measured wire details are in *Wired* below; the text above it is the
 pre-registration, left as written before anything ran.
@@ -157,9 +157,83 @@ with DFlash off.
 
 ## Audit
 
+Full report: [`artifacts/muse-glimmer-30b-bf16-REVIEW-baseline.md`](../artifacts/muse-glimmer-30b-bf16-REVIEW-baseline.md).
+Submission frozen at `b9c9f6d` **before** the audit began, so the artifact is re-derivable from git alone.
+
+Four independent passes: a blind adversarial auditor (walled off from the scratchpad, all run records,
+every `REVIEW*`/`FINDINGS*`/`EVIDENCE*` file and every other model's submission), a claims reviewer
+working from the opencode transcript, a 14-mutation battery with negative controls at both ends, and a
+ground-truth pass. The three Criticals were each reached by more than one pass independently.
+
+**Ground truth was re-established before anything was charged.** The submission pins govmomi
+**v0.52.0**; every prior run in this field used v0.55.1. Identical probes were run against both in
+parallel modules: they agree on every fact, the sole difference in 578 lines of dumped state being
+`summary.storage.committed` 233 vs 234 bytes. This prevented two false findings — `memoryMB = 32` and
+`committed = 233` bytes mean **`RAM 0.0 GiB` is the *correct* output**, not the unit-scaling defect
+first suspected, and any non-zero figure would have been the fabrication.
+
 ## Score
 
+**FAIL — 14 / 30.** Accuracy 2 · Integrity 1 · Security 3 · Performance 3 · Concurrency 3 · Quality 2.
+
+Three Criticals: `vswitches --portgroup` is a `return []VMInfo{}, nil` stub (AC6 unimplemented, proven
+by a 2-SOAP-call round-trip count against 16 correct rows); its test asks for a *nonexistent* port group
+and asserts empty, which only a stub satisfies (the battery proved a correct implementation, the stub,
+and a broken mutant all pass identically); and the transport classifier substring-matches the
+**datastore name**, never requesting `config.storageDevice` anywhere in the tree (AC4's logic does not
+exist).
+
+No dissent on the total — the blind auditor scored 14 independently and the dimension split matched.
+
+**The pattern is more informative than the score.** Almost every value that looks right on vcsim is a
+literal or an accident rather than a mechanism: `unknown` transport reached by name-matching, DVS
+`Ports: 0` hardcoded while the real per-portgroup `numPorts = 1` sat retrieved-and-discarded, `VLAN "0"`
+a default that happens to equal vcsim's real VLAN 0, `LACP: "disabled"` asserted where `N/A` is honest.
+The output reads clean and the logic mostly isn't there — so on a live vCenter, which is exactly where
+the spec says criteria 4 and 5 are validated, most of those columns would be wrong.
+
+Genuinely good, and worth not losing: `vms` and `datastores` are textbook single-`ContainerView` +
+explicit property list, 5 round-trips at any inventory size. AC3 correct. Viper precedence verified live
+across all four tiers. `--timeout 1ms` honoured. `-race`, `staticcheck`, `govulncheck` clean. No
+fabricated output — 17 claims checked, 12 true, and the pasted samples are byte-identical to real runs.
+This submission does not lie in prose; it lies in code.
+
 ## Compare
+
+**This is the first unconfounded data point in the field** — no quantization in the weights, none in the
+KV cache — and it lands at **14 / 30**, below every local baseline in the cohort except the three
+lowest-scoring models.
+
+| Run | Baseline | Final |
+|---|---|---|
+| `laguna-s-2.1` (Q4_K_M, 118B) | **18** — previously the field's best local baseline | 22 |
+| `qwen-3.6-27b` | 16 | 16 |
+| `qwen-agentworld-35b-a3b` | 16 | 23 |
+| `orinth-1.0-35b-fp16` | 16 | 25 |
+| `qwen3.6-35b-a3b-mlx` | 15 | 21 |
+| **`muse-glimmer-30b-bf16`** | **14** | — |
+| `qwen3-coder-next` | 13 | 13 |
+
+**So quantization was never the explanation.** Both laguna records disclose the 4-bit confound as
+unresolvable within their runs; this run resolves it, and the answer is that the asterisk was not
+load-bearing. A 4-bit 118B MoE at 18 beats a BF16 dense 30B at 14 on the same task, same rubric, same
+auditor.
+
+The model card's own comparators are also not borne out here: it claims to beat Gemma 4 31B and Qwen 3.6
+27B across 25+ benchmarks, and it scores below `qwen-3.6-27b`'s 16 baseline on this task. Benchmarks
+covering AIME and SWE-Bench Pro do not predict a multi-hour agentic build with mutation-tested ground
+truth — which is the reason this eval exists.
+
+**Pre-registered cull thresholds — none met.** Baseline > 18 was "earns its slot", ≥ 22 "retire gemma
+and the qwens", ≥ 25 "retire agentworld". At 14 the retirement decision is off, and the thresholds were
+recorded before the run precisely so this could not be rationalised after the fact.
+
+**Process note, recorded against the operator not the model:** a `/tmp` access permission prompt sat
+unanswered for **2 h 22 m** mid-run. Active time was **~4 h 20 m** (10:59 → 15:19) against ~6 h 42 m
+wall clock. The same wall-clock/active-time distinction that had to be corrected for laguna round 3.
+
+Not yet run, both pre-registered and unaffected by this result: the Q8_0 and UD-Q4_K_XL rungs, and the
+DFlash / `-np` concurrency arms.
 
 ## Remediate
 
