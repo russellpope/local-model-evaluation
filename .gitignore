@@ -36,6 +36,7 @@ bin/
 /qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/vsphere-inventory
 /muse-glimmer-30b-bf16/vsphere-inventory
 /muse-glimmer-30b-bf16/vcsim
+/muse-glimmer-30b-bf16/vsphere-cli
 
 # Vector DB / evaluation artifacts
 ruvector.db
