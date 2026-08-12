@@ -2,7 +2,7 @@
 name: muse-glimmer-30b-bf16
 created: 2026-08-11
 model: Muse Glimmer 30B (Meta, released 2026-08-10, Apache 2.0 — dense causal transformer, ~29.6B total incl. ~1.8B ViT-G/14 perception encoder, ~27.9B language model; 52 layers, alternating SWA-2048 / global attention; 131,072+ context. Run at **BF16, native precision** from `unsloth/Muse-Glimmer-30B-GGUF` (2 shards, 55,725,511,168 B = 51.9 GiB). Local on Apple M5 Max 128 GiB via self-built llama.cpp llama-server; driven via opencode)
-stage: staged
+stage: wired
 score:
 ---
 
@@ -10,9 +10,10 @@ score:
 
 ## Wire
 
-**Status: staged, not yet wired.** Directory seeded with the eval prompt only. The audit prompt is
-deliberately **not** present in the workspace — it is dropped in at audit time, never before.
-No submission yet, no server yet, no gates run.
+**Status: wired 2026-08-12, all gates green, eval in flight.** Directory was seeded with the eval
+prompt only. The audit prompt is deliberately **not** present in the workspace — it is dropped in at
+audit time, never before. Measured wire details are in *Wired* below; the text above it is the
+pre-registration, left as written before anything ran.
 
 ### Why this run exists
 
@@ -71,8 +72,8 @@ mutation-tested ground truth: Meta's ~0.2% degradation for its dynamic 4-bit bui
 ### Wire gates — all four must pass before the eval prompt goes in
 
 1. **Build ≥ `b10353`.** Muse Glimmer support merged 2026-08-10, llama.cpp
-   [#26841](https://github.com/ggml-org/llama.cpp/pull/26841). The current local build predates it.
-   Record the build tag actually run.
+   [#26841](https://github.com/ggml-org/llama.cpp/pull/26841). Record the build tag actually run,
+   and prove support by loading the arch — a version comparison is not evidence.
 2. **`--jinja` present.** Without it the server errors `this custom template is not supported`.
 3. **Stop-token round-trip.** End sequences are `<|end_of_text|>` and `<|eot|>`. **Do not stop on
    `<|eom|>`** — that is end-of-message, which terminates a tool call. Stopping there truncates the
@@ -91,6 +92,68 @@ is 51.9 GiB.
 block-diffusion drafter, 16 tokens per forward pass, claimed lossless — unlike the mismatched draft
 model that took laguna from ~27 t/s to 3 t/s. It should help. Establish the BF16 baseline without
 it, then A/B it on its own.
+
+### Wired — measured 2026-08-12, all gates green
+
+Server: Homebrew `llama-server` **build 10360 (48d22e295)**, upstream — *not* the
+`poolsideai/llama.cpp` fork at build 10010 that every laguna number came from. That fork exists to
+add Laguna support and stays untouched so those runs remain reproducible.
+
+```
+--jinja -fa on -ngl 999 -np 1 -c 131072 -b 4096 -ub 2048
+--temp 1.0 --top-p 0.95 --top-k 64 --reasoning-preserve -lv 4 --log-timestamps
+```
+
+Both shards auto-load from shard 1 (`split.count = 2`, 731 tensors). Model reports
+`27.85 B params`, `n_expert = 0` (**dense**), `n_ctx_train = 131072`, `n_head_kv = 2` (16:1 GQA),
+`n_swa = 2048` with `sliding_window_pattern = 4` → 13 full-attention layers, 39 SWA.
+
+**Memory, measured:** 50,566 MiB model + 1,820 MiB KV (1,664 full-attention + 156 SWA, both F16) +
+1,100 MiB compute = **53,486 MiB, with 56,613 MiB free.** F16 KV at full context costs under 2 GiB
+here, so the `q8_0` KV compromise the laguna arc was forced into never arises — no quantization
+anywhere in this stack.
+
+Gates: arch loads live (not inferred from build number); template accepted; **two-turn tool
+round-trip returns `finish_reason=stop`** — the `-inf` EOG logit bias is benign and the Harmony
+recipient syntax (`<|start|>assistant to=user<|message|>`) parses correctly; single slot, so `-c` is
+the true per-request context; thinking on (6,039 chars `reasoning_content`, `reasoning_tokens: 0` —
+the llama-server accounting artifact `a0547c4` exists for).
+
+`Reasoning strength: high` is the **chat template's own default**, visible in the rendered
+`example_format` — not an auditor injection. Recorded as such.
+
+**Deviation from the card, recorded not corrected:** llama-server applies a default `min_p = 0.05`
+on top of the card's documented `temp 1.0 / top_p 0.95 / top_k 64`. Left as-is for rung 1; whatever
+it is, it must be identical on all three rungs.
+
+Harness: opencode provider `llamacpp-local` → `http://localhost:1234/v1`, model id
+`muse-glimmer-30b-bf16` (matches `--alias`), limits `context 131072 / output 32768`. Deliberately a
+new provider rather than an entry under the `lmstudio` one, whose defaults are laguna-shaped
+(262144 context, temp 0.6 / top_k 20) and would have silently misconfigured this model.
+
+### Pre-registered throughput predictions (recorded before measurement)
+
+Decode is memory-bandwidth-bound and this model is **dense**, so every token reads the entire weight
+set. That is the whole explanation for it feeling slow next to laguna, which is 118B total but only
+**~8B active** per token — an MoE reads one expert set, not the model. Same machine, opposite
+sparsity, ~4× the bytes per token.
+
+| Rung | Bytes read/token | Predicted |
+|---|---|---|
+| BF16 | ~55.7 GB | 8–10 t/s |
+| Q8_0 | ~29.6 GB | 18–19 t/s |
+| UD-Q4_K_XL | ~15.9 GB | 33–35 t/s |
+
+If these hold, **the precision ladder is also a speed ladder**, and the deployable configuration is
+whichever rung holds its score at usable speed — not necessarily the most accurate one. That is the
+adoption question, and it is not answerable from the BF16 run alone.
+
+This also predicts DFlash should pay off *unusually well here*: speculative decoding amortises one
+weight read across a whole accepted block, which is exactly the bottleneck a dense BF16 model has
+and a sparse MoE does not. Pre-registered as an arm on rung 1 after the baseline scores, testing two
+claims at once — Meta's "identical output quality", and whether it makes BF16 usable. If it is
+lossless and fast it becomes an adoption fact, not a ladder variable, and the ladder stays measured
+with DFlash off.
 
 ## Audit
 
