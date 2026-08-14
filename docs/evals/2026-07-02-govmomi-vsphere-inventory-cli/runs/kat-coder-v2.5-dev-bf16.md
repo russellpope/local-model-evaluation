@@ -106,9 +106,27 @@ block per completed user turn.
 
 Off therefore matches the template's own default (and so the post-training distribution), costs
 nothing in within-task continuity, and avoids accumulating every prior turn's reasoning in context
-over a multi-hour run. Revisit only if the run turns into many short follow-up messages. The
-`laguna-s-2.1-hf-Q4_K_M` run is the cautionary case for flipping it casually — five variables moved
-at once, that flag among them, and it proved nothing.
+over a multi-hour run.
+
+**There is a real cost to off, and it is prompt-cache stability, not quality**
+(`scratchpad/prefix-stability-probe.py`). History is not append-only with the flag off: a new user
+message moves `last_query_index`, which strips the previous turn's thinking out of the *middle* of
+the prompt. Rendering the same history before and after one follow-up:
+
+| | turn N | after one follow-up | server KV cache |
+|---|---|---|---|
+| preserve OFF | 495 tok | **85 tok**, only 10.3% of the body prefix survives | **invalidated — full reprocess** |
+| preserve ON | 495 tok | 515 tok, append-only | **survives** |
+
+So off costs one full context reprocess per operator follow-up message — roughly 3 min on a
+100k-token conversation at the 550–620 t/s prompt eval measured here. Accepted deliberately: this
+eval is designed as one large prompt plus an autonomous self-verification loop (Muse: ~4 h 20 m
+active, few interventions), and preserve ON would retain every completed turn's entire tool-chain
+reasoning, a compounding context cost that slows every later prompt eval. **Revisit before the
+prompt is delivered if the run is expected to be heavily babysat** — after that, flipping it is a
+mid-run variable change and invalidates the gates. The `laguna-s-2.1-hf-Q4_K_M` run is the
+cautionary case for flipping it casually — five variables moved at once, that flag among them, and
+it proved nothing.
 
 #### Gates
 
