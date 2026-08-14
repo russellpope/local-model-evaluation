@@ -37,6 +37,13 @@ bin/
 /muse-glimmer-30b-bf16/vsphere-inventory
 /muse-glimmer-30b-bf16/vcsim
 /muse-glimmer-30b-bf16/vsphere-cli
+# kat-coder-v2.5-dev-bf16: the eval prompt does not fix a binary name, so the
+# recurring names are anchored ahead of the run. Re-verify at freeze time that no
+# *source* file is hidden by these before the submission commit.
+/kat-coder-v2.5-dev-bf16/vsphere-inventory
+/kat-coder-v2.5-dev-bf16/vsphere-cli
+/kat-coder-v2.5-dev-bf16/govmomi-cli
+/kat-coder-v2.5-dev-bf16/vcsim
 
 # Vector DB / evaluation artifacts
 ruvector.db
