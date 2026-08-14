@@ -65,34 +65,21 @@ v2-instrument change, not a fix.**
 
 ## Open questions & risks
 
-**DISK IS THE BLOCKER FOR QWEN3.8.** `/System/Volumes/Data` is **99% full — 19 GiB free of 1.8 TiB**.
+**Disk blocker — RESOLVED 2026-08-14 by the operator.** It was 99% full / 19 GiB free; the operator
+deleted `bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF` (65 GB) and
+`unsloth/Qwen-AgentWorld-35B-A3B-GGUF` (65 GB). **Now 149 GiB free (92% used)**, which fits Qwen3.8 27B
+at BF16 (~54 GB) with ~95 GB spare. No further deletion needed before the next wire.
 
-| Store | Size |
-|---|---|
-| `~/.lmstudio/models` | 268 GB |
-| `~/models` (laguna 93G + Muse 52G) | 145 GB |
+Remaining store, for the run after that: `~/models/laguna-s-2.1` 93 GB (best local baseline, keep for
+reproducibility), `deepreinforce-ai/Ornith-1.0-35B-GGUF` 65 GB (arc closed), `~/models/Muse-Glimmer-30B-GGUF`
+52 GB (**keep — the pre-registered ladder rungs need it**), `gemma-4-31B` 32 GB (arc closed),
+`RockTalk/Lance-3B-Video-MLX` 30 GB (unrelated to this field).
 
-At 27B, Qwen3.8 needs roughly **~54 GB at BF16, ~29 GB at Q8_0, ~16 GB at Q4_K_M**. Only Q4_K_M fits
-today, with ~3 GiB to spare — which is too tight to run safely and would reintroduce the quantization
-confound this field just spent two runs eliminating. **Space must be freed before the download, and the
-operator decides what goes.** Nothing was deleted this session.
-
-Candidates, with what deleting each forecloses:
-
-| Weights | Size | Status | Deleting costs |
-|---|---|---|---|
-| `bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF` | 65 GB | audited 14/30 | the KAT rerun below |
-| `unsloth/Qwen-AgentWorld-35B-A3B-GGUF` | 65 GB | rescored 23/30, arc closed | nothing pending |
-| `deepreinforce-ai/Ornith-1.0-35B-GGUF` | 65 GB | rescored 25/30, arc closed | nothing pending |
-| `lmstudio-community/gemma-4-31B-it-GGUF` | 32 GB | rescored 22/30, arc closed | nothing pending |
-| `~/models/Muse-Glimmer-30B-GGUF` | 52 GB | audited 14/30 | the pre-registered Q8_0 / UD-Q4_K_XL ladder rungs |
-| `~/models/laguna-s-2.1` | 93 GB | rescored 22/30 | the best local baseline's reproducibility |
-| `RockTalk/Lance-3B-Video-MLX` | 30 GB | unrelated to this field | nothing here |
-
-**A KAT rerun under working conditions is unresolved and is *not* a remediation round.** The scored run
-got **1h28m of compute against 8h42m wall**, losing 6h09m to an unanswered permission prompt, and it lost
-`Makefile`, `vswitches_test.go` and `datastores_test.go` to a tool-format collapse. Whether 14 is the
-model's ceiling or the run's is untested. If the rerun is wanted, **do not delete KAT's weights.**
+**The KAT rerun is FORECLOSED — its weights are deleted and the 14/30 baseline stands as final.** Recorded
+because the caveat in the run record is now unresolvable without a re-download: that run got **1h28m of
+compute against 8h42m wall**, losing 6h09m to an unanswered permission prompt, and lost `Makefile`,
+`vswitches_test.go` and `datastores_test.go` to the tool-format collapse. Whether 14 was the model's
+ceiling or the run's was never tested. Anyone reading the 14 should read that alongside it.
 
 **Pre-registered and still unrun:** Muse ladder rungs Q8_0 (27.6 GiB) and UD-Q4_K_XL (14.8 GiB), all from
 `unsloth/Muse-Glimmer-30B-GGUF` only — mixing producers reintroduces a quantization-*method* confound.
