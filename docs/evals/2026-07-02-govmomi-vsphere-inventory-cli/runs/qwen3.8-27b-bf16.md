@@ -195,6 +195,37 @@ but the carried-over number would have been wrong by 3×. The server suggests th
 (`chat template supports preserving reasoning`) and this model's card promotes `preserve_thinking` as
 a first-class feature; neither is a reason to enable it here.
 
+### Prediction 2 — FALSIFIED in flight, 2026-08-14 11:48
+
+Pre-registered: *decode at ≥ 100k depth retains ≥ 75% of shallow decode.* Five paired readings taken
+20 s apart, each pairing `/slots.n_prompt_tokens` with the server's own `print_timing` at the same
+instant:
+
+| depth | cached | tg | % of shallow 10.0 |
+|---|---|---|---|
+| 103,346 | 103,142 | 6.97 | 69.7% |
+| 103,485 | 103,142 | 6.95 | 69.5% |
+| 103,821 | 103,494 | 7.02 | 70.2% |
+| 103,971 | 103,904 | 7.00 | 70.0% |
+| 104,271 | 104,033 | 7.03 | 70.3% |
+
+**~70%, stable, against a 75% bar. Falsified.** Recorded against the architecture claim this run was
+built to test: 16-of-64 layers growing a KV cache mutes the decay but does not mute it as much as
+predicted. An earlier reading at 90,179 depth gave 8.08 t/s (80.8%), so the curve crosses the bar
+somewhere between 90k and 100k.
+
+**What this does NOT establish.** There is no measured decay curve for a full-attention dense model
+on this machine, so "70% is worse than predicted" is not the same as "the hybrid layers didn't help."
+The counterfactual was never instrumented and cannot be recovered from this run. Pre-registering a
+retention threshold without a comparison arm is an **instrument defect, charged to the auditor** —
+logged as **R7**. A v2 instrument should measure a dense-attention control at matched depth, or drop
+the threshold in favour of reporting the curve.
+
+*Method note, recorded because the first attempt was wrong:* an initial retrospective correlation
+mapped log elapsed-time back to sampler wall-clock and returned a constant 584-token depth for every
+sample — a broken anchor. The table above replaces it with direct paired reads. The bad method was
+discarded, not patched.
+
 ### Speculative decoding — confirmed off at runtime
 
 `/slots` reports `speculative: false`. No draft model loaded, matching the twelve prior runs.
