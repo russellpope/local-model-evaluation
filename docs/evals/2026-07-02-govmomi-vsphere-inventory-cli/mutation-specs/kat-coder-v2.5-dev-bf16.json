@@ -1,0 +1,273 @@
+[
+  {
+    "id": "OUT-hdr-ds",
+    "file": "cmd/root.go",
+    "desc": "[NEG-CTL must-survive] datastore table header GiB -> GB",
+    "find": "\tfmt.Fprintln(t, \"NAME\\tTYPE\\tUSED (GiB)\\tAVAILABLE (GiB)\")",
+    "replace": "\tfmt.Fprintln(t, \"NAME\\tTYPE\\tUSED (GB)\\tAVAILABLE (GB)\")"
+  },
+  {
+    "id": "OUT-units-fmt",
+    "file": "format/format.go",
+    "desc": "[NEG-CTL must-kill] HumanReadable unit labels KiB->KB",
+    "find": "\tunits := []string{\"B\", \"KiB\", \"MiB\", \"GiB\", \"TiB\"}",
+    "replace": "\tunits := []string{\"B\", \"KB\", \"MB\", \"GB\", \"TB\"}"
+  },
+  {
+    "id": "OUT-swrow-vlan",
+    "file": "cmd/root.go",
+    "desc": "switch table row drops VLAN column value (prints LACP twice)",
+    "find": "\t\t\ts.Name, s.SwitchType, s.PortGroup, s.VLAN, uplinks, s.LACP, s.TotalPorts, s.UsedPorts)",
+    "replace": "\t\t\ts.Name, s.SwitchType, s.PortGroup, s.LACP, uplinks, s.LACP, s.TotalPorts, s.UsedPorts)"
+  },
+  {
+    "id": "ARITH-ram-mb",
+    "file": "inventory/vms.go",
+    "desc": "RAM MB->GB divisor 1024 -> 1000 (decimal/binary scaling defect)",
+    "find": "\t\tramGB := float64(vm.Config.Hardware.MemoryMB) / 1024.0",
+    "replace": "\t\tramGB := float64(vm.Config.Hardware.MemoryMB) / 1000.0"
+  },
+  {
+    "id": "ARITH-vm-storage",
+    "file": "inventory/vms.go",
+    "desc": "VM committed storage GiB divisor 1024^3 -> 1000^3",
+    "find": "\t\t\t\tstorageGiB += float64(usage.Committed) / (1024 * 1024 * 1024)",
+    "replace": "\t\t\t\tstorageGiB += float64(usage.Committed) / (1000 * 1000 * 1000)"
+  },
+  {
+    "id": "ARITH-ds-used",
+    "file": "inventory/datastores.go",
+    "desc": "datastore used = capacity - free  ->  capacity + free",
+    "find": "\t\tusedGiB = capacityGiB - freeGiB",
+    "replace": "\t\tusedGiB = capacityGiB + freeGiB"
+  },
+  {
+    "id": "PRED-ds-nfs",
+    "file": "inventory/datastores.go",
+    "desc": "classifyDatastoreType NFS predicate inverted",
+    "find": "\tif summary.Type == \"NFS\" {",
+    "replace": "\tif summary.Type != \"NFS\" {"
+  },
+  {
+    "id": "PRED-pg-match",
+    "file": "inventory/vswitches.go",
+    "desc": "std port-group name match inverted (--portgroup returns the complement)",
+    "find": "\t\tif pg.Spec.Name == pgName {",
+    "replace": "\t\tif pg.Spec.Name != pgName {"
+  },
+  {
+    "id": "PRED-dvs-pgkey",
+    "file": "inventory/vswitches.go",
+    "desc": "DVS portgroup-key VM match inverted",
+    "find": "\t\t\t\t\t\tif back.Port.PortgroupKey == pgKey {",
+    "replace": "\t\t\t\t\t\tif back.Port.PortgroupKey != pgKey {"
+  },
+  {
+    "id": "ERR-suppress-std",
+    "file": "inventory/vswitches.go",
+    "desc": "standard-switch enumeration error swallowed (continue instead of return)",
+    "find": "\t\t\treturn nil, fmt.Errorf(\"list standard switches for %s: %w\", hosts[i].Name, err)",
+    "replace": "\t\t\tcontinue"
+  },
+  {
+    "id": "ERR-suppress-dvs",
+    "file": "inventory/vswitches.go",
+    "desc": "distributed-switch enumeration error swallowed (nil error, empty result)",
+    "find": "\t\treturn nil, fmt.Errorf(\"list distributed switches: %w\", err)",
+    "replace": "\t\tdvsSw = nil"
+  },
+  {
+    "id": "ERR-prop-break",
+    "file": "inventory/vswitches.go",
+    "desc": "getHosts retrieves a nonexistent property (forces a real retrieve failure)",
+    "find": "[]string{\"name\", \"config.network\"}",
+    "replace": "[]string{\"name\", \"config.networkXYZ\"}"
+  },
+  {
+    "id": "FAB-lacp-std",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant: standard vSwitch LACP N/A -> enabled",
+    "find": "\t\tuplinks := vswitchUplinks[name]\n\t\tlacp := \"N/A\"",
+    "replace": "\t\tuplinks := vswitchUplinks[name]\n\t\tlacp := \"enabled\""
+  },
+  {
+    "id": "FAB-lacp-dvs",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant: DVS LacpGroupConfig>0 reports disabled",
+    "find": "\t\t\t\tif len(dvsConfig.LacpGroupConfig) > 0 {\n\t\t\t\t\tlacp = \"enabled\"\n\t\t\t\t} else {\n\t\t\t\t\tlacp = \"disabled\"\n\t\t\t\t}",
+    "replace": "\t\t\t\tif len(dvsConfig.LacpGroupConfig) > 0 {\n\t\t\t\t\tlacp = \"disabled\"\n\t\t\t\t} else {\n\t\t\t\t\tlacp = \"enabled\"\n\t\t\t\t}"
+  },
+  {
+    "id": "FAB-dvs-vlan",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant: DVS portgroup VLAN hardcoded 0 -> 4094",
+    "find": "\t\t\tvlan := \"0\"",
+    "replace": "\t\t\tvlan := \"4094\""
+  },
+  {
+    "id": "FAB-dvs-used",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant: DVS UsedPorts hardcoded 0 -> 3",
+    "find": "\t\t\t\tTotalPorts: totalPorts,\n\t\t\t\tUsedPorts:  0,",
+    "replace": "\t\t\t\tTotalPorts: totalPorts,\n\t\t\t\tUsedPorts:  3,"
+  },
+  {
+    "id": "FAB-dvs-ports",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant: DVS port pair wholly invented but self-consistent (128/64)",
+    "find": "\t\t\t\tTotalPorts: totalPorts,\n\t\t\t\tUsedPorts:  0,",
+    "replace": "\t\t\t\tTotalPorts: 128,\n\t\t\t\tUsedPorts:  64,"
+  },
+  {
+    "id": "FAB-dvs-total",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant (compiling retry of FAB-dvs-ports): DVS TotalPorts invented as 128, used stays 0 so the used<=total bound still holds",
+    "find": "\t\t\t\ttotalPorts = int(dvsConfig.NumPorts)",
+    "replace": "\t\t\t\ttotalPorts = 128"
+  },
+  {
+    "id": "FAB-dvs-total2",
+    "file": "inventory/vswitches.go",
+    "desc": "fabricated constant (compiling 3rd attempt): DVS TotalPorts invented as 128; UsedPorts stays 0 so the used<=total sanity bound still holds",
+    "find": "\t\t\tif dvsConfig, ok := dvs.Config.(*types.VMwareDVSConfigInfo); ok {\n\t\t\t\ttotalPorts = int(dvsConfig.NumPorts)\n\t\t\t}",
+    "replace": "\t\t\tif _, ok := dvs.Config.(*types.VMwareDVSConfigInfo); ok {\n\t\t\t\ttotalPorts = 128\n\t\t\t}"
+  },
+  {
+    "id": "ARITH-sw-used",
+    "file": "inventory/vswitches.go",
+    "desc": "std vSwitch used-ports arithmetic dropped (used := total, stays within sanity bound)",
+    "find": "\t\t\t\t\tUsedPorts:  int(vsw.NumPorts) - int(vsw.NumPortsAvailable),",
+    "replace": "\t\t\t\t\tUsedPorts:  int(vsw.NumPorts),"
+  },
+  {
+    "id": "FAB-transport",
+    "file": "inventory/datastores.go",
+    "desc": "fabricated constant: ClassifyTransportFromDevice FC branch returns iSCSI",
+    "find": "\t\treturn \"FC\"",
+    "replace": "\t\treturn \"iSCSI\""
+  },
+  {
+    "id": "TMO-ctx-inert",
+    "file": "cmd/root.go",
+    "desc": "timeout plumbing: runVMs WithTimeout -> WithCancel (--timeout inert)",
+    "find": "\tctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)",
+    "replace": "\tctx, cancel := context.WithCancel(context.Background())"
+  },
+  {
+    "id": "TMO-cfg-inert",
+    "file": "config/config.go",
+    "desc": "timeout plumbing: LoadConfig ignores configured timeout, always falls back to 60s",
+    "find": "\t\tTimeout:  v.GetDuration(\"timeout\"),",
+    "replace": "\t\tTimeout:  0,"
+  },
+  {
+    "id": "TMO-default",
+    "file": "config/config.go",
+    "desc": "default timeout 60s -> 30s",
+    "find": "\tv.SetDefault(\"timeout\", 60*time.Second)",
+    "replace": "\tv.SetDefault(\"timeout\", 30*time.Second)"
+  },
+  {
+    "id": "SORT-vms",
+    "file": "inventory/vms.go",
+    "desc": "ListVMs no longer sorts by name",
+    "find": "\tsortByName(result)\n\treturn result, nil",
+    "replace": "\treturn result, nil"
+  },
+  {
+    "id": "SORT-ds",
+    "file": "inventory/datastores.go",
+    "desc": "ListDatastores no longer sorts by name",
+    "find": "\tsortDatastoreByName(result)\n\treturn result, nil",
+    "replace": "\treturn result, nil"
+  },
+  {
+    "id": "SORT-sw-drop",
+    "file": "inventory/vswitches.go",
+    "desc": "ListSwitches no longer sorts (order becomes standard-then-distributed)",
+    "find": "\tsortSwitchesByTypeAndName(result)\n\treturn result, nil",
+    "replace": "\treturn result, nil"
+  },
+  {
+    "id": "SORT-sw-invert",
+    "file": "inventory/vswitches.go",
+    "desc": "switchLess type comparator inverted (sort AND its assertion use the same fn)",
+    "find": "\t\treturn a.SwitchType < b.SwitchType",
+    "replace": "\t\treturn a.SwitchType > b.SwitchType"
+  },
+  {
+    "id": "SORT-sw-name",
+    "file": "inventory/vswitches.go",
+    "desc": "switchLess name comparator inverted",
+    "find": "\treturn a.Name < b.Name",
+    "replace": "\treturn a.Name > b.Name"
+  },
+  {
+    "id": "BND-fmt-lt",
+    "file": "format/format.go",
+    "desc": "boundary: bytes < unit -> bytes <= unit (1024 renders as 1024.0B)",
+    "find": "\tif bytes < unit {",
+    "replace": "\tif bytes <= unit {"
+  },
+  {
+    "id": "BND-fmt-exp",
+    "file": "format/format.go",
+    "desc": "boundary: exponent cap exp < 4 -> exp < 3 (TiB unreachable)",
+    "find": "\tfor bytes/div >= unit && exp < 4 {",
+    "replace": "\tfor bytes/div >= unit && exp < 3 {"
+  },
+  {
+    "id": "BND-vlan-trunk",
+    "file": "inventory/vswitches.go",
+    "desc": "boundary: VLAN trunk sentinel 4095 -> 4094",
+    "find": "\tif vlanId == 4095 {",
+    "replace": "\tif vlanId == 4094 {"
+  },
+  {
+    "id": "BND-vcpu-floor",
+    "file": "inventory/vms.go",
+    "desc": "boundary: vCPU zero-floor removed (0 vCPU reported verbatim)",
+    "find": "\t\tif vcpu == 0 {\n\t\t\tvcpu = 1\n\t\t}",
+    "replace": "\t\tif vcpu == -1 {\n\t\t\tvcpu = 1\n\t\t}"
+  },
+  {
+    "id": "SEC-insecure-def",
+    "file": "config/config.go",
+    "desc": "SECURITY: default insecure false -> true (TLS verification off by default)",
+    "report_only": true,
+    "find": "\tv.SetDefault(\"insecure\", false)",
+    "replace": "\tv.SetDefault(\"insecure\", true)"
+  },
+  {
+    "id": "SEC-tls-forced",
+    "file": "cmd/root.go",
+    "desc": "SECURITY: govmomi.NewClient insecure arg hardcoded true (--insecure=false ignored)",
+    "report_only": true,
+    "find": "\tc, err := govmomi.NewClient(ctx, u, insecure)",
+    "replace": "\tc, err := govmomi.NewClient(ctx, u, true)"
+  },
+  {
+    "id": "SEC-cred-override",
+    "file": "cmd/root.go",
+    "desc": "SECURITY: hardcoded user/pass fallback gate inverted (always overrides real creds)",
+    "report_only": true,
+    "find": "\tif user == \"\" {\n\t\tuser = \"user\"\n\t\tpass = \"pass\"\n\t}",
+    "replace": "\tif user != \"\" {\n\t\tuser = \"user\"\n\t\tpass = \"pass\"\n\t}"
+  },
+  {
+    "id": "LIFE-logout",
+    "file": "cmd/root.go",
+    "desc": "LIFECYCLE: runVMs session never logged out (defer c.Logout removed)",
+    "report_only": true,
+    "find": "\tdefer c.Logout(ctx)\n\n\tdc, err := getDatacenter(ctx, c)",
+    "replace": "\tdc, err := getDatacenter(ctx, c)"
+  },
+  {
+    "id": "LIFE-view-destroy",
+    "file": "inventory/vswitches.go",
+    "desc": "LIFECYCLE: DVS container view never destroyed (server-side view leak)",
+    "report_only": true,
+    "find": "\tdefer v.Destroy(ctx)\n\n\tvar dvsList []mo.DistributedVirtualSwitch\n\tif err := v.Retrieve(ctx, []string{\"DistributedVirtualSwitch\"}, []string{\"name\", \"config\", \"portgroup\"}, &dvsList); err != nil {",
+    "replace": "\tvar dvsList []mo.DistributedVirtualSwitch\n\tif err := v.Retrieve(ctx, []string{\"DistributedVirtualSwitch\"}, []string{\"name\", \"config\", \"portgroup\"}, &dvsList); err != nil {"
+  }
+]
