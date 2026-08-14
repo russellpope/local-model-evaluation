@@ -44,6 +44,10 @@ bin/
 /kat-coder-v2.5-dev-bf16/vsphere-cli
 /kat-coder-v2.5-dev-bf16/govmomi-cli
 /kat-coder-v2.5-dev-bf16/vcsim
+# KAT-Coder ignored the staged workspace and wrote to the REPO ROOT as
+# govmomi-inventory/. Anchor its 27 MB binary at the path it actually used —
+# note the entry point is govmomi-inventory/main.go, which must NOT be hidden.
+/govmomi-inventory/govmomi-inventory
 
 # Vector DB / evaluation artifacts
 ruvector.db
