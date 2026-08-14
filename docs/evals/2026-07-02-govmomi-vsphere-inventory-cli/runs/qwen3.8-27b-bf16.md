@@ -2,7 +2,7 @@
 name: qwen3.8-27b-bf16
 created: 2026-08-14
 model: Qwen3.8-27B (Apache 2.0 — hybrid linear-attention/SSM **dense** model, arch `qwen35`; 64 blocks, `full_attention_interval = 4` → 16 full-attention + 48 linear/SSM layers; `head_count 24`, `head_count_kv 4`, `key/value_length 256`; vocab 248,320; 262,144 native context; natively multimodal `image-text-to-text`, run text-only. Run at **BF16, native precision** from `ggml-org/Qwen3.8-27B-GGUF` single file `Qwen3.8-27B-BF16.gguf`, 53,808,281,952 B = 50.1 GiB, 851 tensors. Local on Apple M5 Max 128 GiB via Homebrew llama.cpp `llama-server` build 10360; driven via opencode)
-stage: wiring
+stage: wired
 score:
 ---
 
@@ -138,6 +138,66 @@ judged against a bar set before it, not after.
 Field baselines: laguna-s-2.1 **18** (best local), qwen-3.6-27b 16, qwen-agentworld 16,
 orinth-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, **kat-coder-v2.5-dev-bf16 14**,
 qwen3-coder-next 13. Ornith-1.0-397B (22 → 28) is cloud-hosted and is not a local-disk decision.
+
+### Wired — measured 2026-08-14, all five gates green
+
+Everything above this line was committed at `2f9decb` before the model was loaded. Everything below
+is measurement.
+
+| Gate | Result |
+|---|---|
+| 1. Arch loads **live** | **PASS** — `qwen35` loaded in 14.4 s. Not a version comparison, not a strings grep. |
+| 2. Chat template accepted | **PASS** — tool schema rendered, no template exception |
+| 3. Real two-turn tool round-trip | **PASS** — see below |
+| 4. Effective context asserted | **PASS** — 262,144 from `/props.default_generation_settings` *and* `/slots` |
+| 5. Thinking on | **PASS** — `reasoning_content` returned as **text**, 185 + 152 chars over two turns |
+
+**Gate 3 in full.** Turn 1 returned `finish_reason: tool_calls` with a correctly parsed
+`get_datastore_capacity{"datastore":"LocalDS_0"}`; turn 2 consumed an injected tool result and
+answered *"3,221,225,472 bytes, which equals 3 GiB"*. Recorded because `/props` reported
+`chat_format: None` on this build — the same unreliable field that advertised `"Content-only"` on KAT
+and would have produced a false abort if read alone. **Only the round-trip is evidence.**
+
+Resident set 65.6 GB (50.1 GiB weights + KV). Vision reports `false` across all modalities, as
+intended — the text-only GGUF was loaded without `mmproj`.
+
+**Prediction 1 — HELD.** Pre-registered 8–11 t/s; measured **10.0 t/s** decode, 346 t/s prompt eval
+at shallow depth. The dense-reads-everything model is ~6× slower than KAT's 58.8–64.8 t/s on the same
+machine, which is the sparsity difference (8 of 256 experts) and not a quality difference. The
+ordering discipline this run was built around held: the forecast was committed with zero weights
+executed.
+
+### Template probes — re-run for this model, and the conclusion is NOT the same as KAT's
+
+Both probes are read-only (`/apply-template` + `/tokenize`). Script committed at
+[`artifacts/tooling/template_probes.py`](../artifacts/tooling/template_probes.py).
+
+**Probe A — reasoning preserved within a turn:** no difference. `preserve_thinking` true, false and
+template-default all render **3 think-blocks / 206 tokens**, identical. Tool responses do not close
+the turn, so a reasoning chain carries forward across an arbitrarily long tool-call sequence with the
+flag off. Same shape as KAT.
+
+**Probe B — prompt-cache stability across a new user turn:** this is where the flag actually acts.
+
+| | before | after | shared prefix | verdict |
+|---|---|---|---|---|
+| preserve OFF | 206 | **179** | 62 (**30.1%**) | prefix broken — full reprocess |
+| preserve ON | 206 | 223 | 206 (**100%**) | append-only |
+
+With it off, history is **not** append-only: a new user message strips the prior turn's thinking out
+of the *middle* of the prompt and the rendered prompt gets **shorter**. Every operator follow-up costs
+one full context reprocess.
+
+**The difference from KAT is quantitative, and it is the reason re-running the probes was not
+ceremony.** KAT retained 10.3% of its prefix; this template retains 30.1%. Both are broken, so the
+*decision* is unchanged — **`--reasoning-preserve` stays OFF** for a one-big-prompt autonomous run —
+but the carried-over number would have been wrong by 3×. The server suggests the flag on load
+(`chat template supports preserving reasoning`) and this model's card promotes `preserve_thinking` as
+a first-class feature; neither is a reason to enable it here.
+
+### Speculative decoding — confirmed off at runtime
+
+`/slots` reports `speculative: false`. No draft model loaded, matching the twelve prior runs.
 
 ## Audit
 
