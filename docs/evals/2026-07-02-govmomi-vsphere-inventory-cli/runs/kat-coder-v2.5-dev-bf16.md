@@ -86,11 +86,29 @@ documented sampler, and Kwaipilot ships 1.0. Recorded because it is a real compa
 vendor sampler — the same deviation disclosed for Muse, and unchanged here.
 
 **`--reasoning-preserve` deliberately OFF**, though the server suggests it on load
-(`chat template supports preserving reasoning`). It changes what is fed *back* to the model across
-turns, not what is captured: opencode persists each turn's `reasoning_content` either way, so it buys
-no trace fidelity while changing behaviour away from the template's own default. The
-`laguna-s-2.1-hf-Q4_K_M` run is the cautionary case — five variables moved at once, that flag among
-them, and it proved nothing.
+(`chat template supports preserving reasoning`). It changes what is fed *back* to the model, not what
+is captured — opencode persists each turn's `reasoning_content` either way — so it buys no trace
+fidelity. What it *does* change was measured rather than assumed, by rendering a realistic agentic
+history through llama-server's own `/apply-template` both ways
+(`scratchpad/preserve-probe.py`):
+
+| Reasoning block | preserve OFF | preserve ON |
+|---|---|---|
+| prior completed user turn | **DROPPED** | KEPT |
+| current turn, before first tool call | **KEPT** | KEPT |
+| current turn, after a tool result | **KEPT** | KEPT |
+
+The template keys off the last *real* user message, and tool responses render as pseudo-user turns
+that do not reset it. So reasoning chains forward intact across an arbitrarily long tool-call
+sequence **with the flag off** — the failure mode the flag appears to guard against does not exist
+for this workload, which is one large prompt plus a self-verification loop. The delta is exactly one
+block per completed user turn.
+
+Off therefore matches the template's own default (and so the post-training distribution), costs
+nothing in within-task continuity, and avoids accumulating every prior turn's reasoning in context
+over a multi-hour run. Revisit only if the run turns into many short follow-up messages. The
+`laguna-s-2.1-hf-Q4_K_M` run is the cautionary case for flipping it casually — five variables moved
+at once, that flag among them, and it proved nothing.
 
 #### Gates
 
