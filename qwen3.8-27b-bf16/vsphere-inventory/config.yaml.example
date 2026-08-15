@@ -1,0 +1,22 @@
+# Example configuration file for vsphere-inventory.
+#
+# Pass it with:  ./vsphere-inventory --config config.yaml <command>
+#
+# These values have the LOWEST precedence of the file-based layers, but are
+# still overridden by environment variables (VSPHERE_*) and command-line
+# flags. Any key may be omitted; omitted keys fall through to the next
+# lower-precedence source (env, then built-in defaults).
+
+# vCenter URL or bare host. A bare host gets https:// and /sdk appended.
+url: https://vc.example.com/sdk
+
+# Credentials.
+username: administrator@vsphere.local
+password: secret
+
+# Skip TLS certificate verification. Useful for self-signed vCenter certs
+# and for the vcsim simulator.
+insecure: true
+
+# Overall operation timeout, parsed as a Go duration.
+timeout: 60s

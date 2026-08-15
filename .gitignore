@@ -48,6 +48,10 @@ bin/
 # govmomi-inventory/. Anchor its 27 MB binary at the path it actually used —
 # note the entry point is govmomi-inventory/main.go, which must NOT be hidden.
 /govmomi-inventory/govmomi-inventory
+# Qwen3.8-27B respected the staged workspace. Its 20 MB binary shares a name with
+# its own parent directory, so this MUST be the full path — a bare
+# `vsphere-inventory` would hide the entire source tree, main.go included.
+/qwen3.8-27b-bf16/vsphere-inventory/vsphere-inventory
 
 # Vector DB / evaluation artifacts
 ruvector.db
