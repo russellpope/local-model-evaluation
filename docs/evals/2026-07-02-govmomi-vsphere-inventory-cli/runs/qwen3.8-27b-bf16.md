@@ -226,6 +226,55 @@ mapped log elapsed-time back to sampler wall-clock and returned a constant 584-t
 sample — a broken anchor. The table above replaces it with direct paired reads. The bad method was
 discarded, not patched.
 
+### Operator prediction — recorded 2026-08-14, before any score exists
+
+The operator, watching the run live, predicts **~17, possibly a little better**. Recorded here
+unscored so it is on paper before the audit rather than after. For calibration: 18 is the field-best
+local baseline (laguna-s-2.1), and > 18 clears the first cull threshold.
+
+Grounds given: this is the first model in the field observed to spend **80–90k tokens exploring and
+grounding itself before writing any code**.
+
+### Behavioural signature — ground-truth-first, and it is new here
+
+Recorded during the run, from the session store, because it is the clearest process difference
+between this model and the thirteen before it.
+
+**Phase 1 (0 → ~104k tokens): zero files written.** 100 bash calls, every one a `grep`/`awk`/`sed`
+against govmomi source in the module cache. 104 of 105 commands unique — no repetition, so not a
+loop. Reasoning at that point: 82 blocks / 85,854 chars, already **1.57× KAT's entire run**.
+
+What it derived rather than assumed:
+
+- vcsim's exact topology, read out of `simulator/model.go` — 1 host, 3 VMs, 2 datastores, DVS0 +
+  `DC0_DVPG_0` — instead of guessing at it.
+- That `ScsiTopology.Interface.Adapter` is the HBA **key** in the simulator but the **device name** on
+  real vCenter, and that the code must therefore map on both.
+- The anti-fabrication requirement, unprompted, choosing a degrade-to-unknown fallback chain:
+  *"first try `vm.Storage.Committed`; if nil, fall back to computing from LayoutEx file sizes; if
+  neither is available, show unknown."*
+
+**Phase 2: a real debug loop against a live simulator.** 15:21 ran the built binary against vcsim →
+output not as expected → 15:22 and 15:26 back into `simulator/host_network_system.go` grepping
+`NetworkInfo|Vswitch|Portgroup` → 15:33 rebuild. It also probed connection-failure handling against
+an unreachable host (`10.255.255.1`). **This is the phase where gemma-4-31b fabricated vswitches,
+qwen-3.6-27b shipped a binary that could not connect, and KAT never arrived at all.**
+
+**Counter-signal, recorded with equal weight.** Exactly two `todowrite` calls in the entire run:
+`09:42:32` (one in_progress, six pending) and `14:41:15` (**five checked at once**). Five hours of
+silence then a batch flip — the operator predicted this pattern before it happened. The work behind
+the batch appears real, so the provisional read is batch-*reporting*, not batch-*faking*. The audit
+decides.
+
+**Three compactions fired**, the last at 230,612 tokens / 88% of the window, while item 7 (Makefile,
+README, sample run evidence) was still untouched. That is precisely the payload KAT lost. Whether
+item 7 exists on disk or only in the final message is the **first audit question**.
+
+*Auditor error, recorded:* an in-flight claim of "~205k headroom" was made from
+`/slots.n_prompt_tokens`, which reports the last request the slot processed — not the conversation
+size. The real figure was 88% used. `/slots` is sound for stall detection and wrong for context
+accounting; opencode's own counter is authoritative.
+
 ### Speculative decoding — confirmed off at runtime
 
 `/slots` reports `speculative: false`. No draft model loaded, matching the twelve prior runs.
