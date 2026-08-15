@@ -2,7 +2,7 @@
 name: qwen3.8-27b-q8_0
 created: 2026-08-14
 model: Qwen3.8-27B (Apache 2.0 — hybrid linear-attention/SSM **dense** model, arch `qwen35`; 64 blocks, `full_attention_interval = 4` → 16 full-attention + 48 linear/SSM layers; 262,144 native context. Run at **Q8_0** from `ggml-org/Qwen3.8-27B-GGUF` single file `Qwen3.8-27B-Q8_0.gguf`, 28.60 GB — **same producer as the BF16 rung**, so precision is the only variable. Local on Apple M5 Max 128 GiB via Homebrew llama.cpp `llama-server` build 10360; driven via opencode)
-stage: wiring
+stage: wired
 score:
 ---
 
@@ -93,6 +93,43 @@ From the BF16 audit, so they are not re-derived:
 - **Parallel auditors must be given explicit, non-shared extraction paths.** The BF16 mutation
   battery had its working tree clobbered by a concurrent agent and had to restart from scratch.
 - **R7 (mine):** do not pre-register a retention threshold without a matched-depth control arm.
+
+### Wired — measured 2026-08-14, all five gates green
+
+Everything above this line was committed at `e66c189` with the file still downloading. Below is
+measurement.
+
+| Gate | Result |
+|---|---|
+| 1. Arch loads **live** | **PASS** — `qwen35` loaded in **7.2 s** (BF16: 14.4 s) |
+| 2. Chat template accepted | **PASS** |
+| 3. Real two-turn tool round-trip | **PASS** — `finish_reason: tool_calls`, result consumed, "**3 GiB**" |
+| 4. Effective context asserted | **PASS** — 262,144 from `/slots` |
+| 5. Thinking on | **PASS** — `reasoning_content` as text, 108 + 136 chars |
+
+`speculative: false` confirmed at runtime. Resident set **43.0 GB** (BF16: 65.6 GB).
+
+**The control is clean.** The Q8_0 header carries the same `general.architecture = qwen35`, the same
+**851 tensors**, the same 64 blocks, the same 262,144 context and the same baked
+`general.sampling.*`. The only differing key is `general.file_type` — **7** (Q8_0) against BF16's
+**32**. Precision is demonstrably the sole variable.
+
+**Prediction 1 — HELD.** Pre-registered 18–22 t/s; measured **18.7 t/s** (turn 1) and **18.2 t/s**
+(turn 2), prompt eval 470 t/s. Against BF16's 10.0 t/s that is **1.87×**, almost exactly the
+file-size ratio of 1.88× (50.1 GiB → 26.6 GiB) — decode is memory-bandwidth bound and scales with
+bytes read per token, as reasoned.
+
+### Template probes — byte-identical to the BF16 rung, as expected
+
+| | before | after | shared prefix | |
+|---|---|---|---|---|
+| preserve OFF | 206 | 179 | 62 (**30.1%**) | prefix broken |
+| preserve ON | 206 | 223 | 206 (**100%**) | append-only |
+
+Probe A: 3 think-blocks / 206 tokens under preserve on, off and default — identical. Both probes
+reproduce the BF16 numbers *exactly*, which is the correct result: the chat template is the same
+file, and quantization cannot touch it. Re-run rather than assumed, and the expectation was itself
+falsifiable. `--reasoning-preserve` stays **OFF**.
 
 ## Audit
 
