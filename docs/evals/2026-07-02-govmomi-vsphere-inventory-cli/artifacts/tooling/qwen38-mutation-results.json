@@ -1,0 +1,552 @@
+[
+ {
+  "id": "M01",
+  "desc": "ClassifyTransport short-circuits: always FC",
+  "file": "inventory/transport.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M01' inventory/transport.go\n41:\treturn TransportFC // MUTANT M01\n\ntransport.go:39: // the answer: a single VMFS datastore may sit on FC, iSCSI or NVMe storage.\ntransport.go:40: func ClassifyTransport(datastoreType string, hba HBADescriptor) string {\ntransport.go:41: \treturn TransportFC // MUTANT M01\ntransport.go:42: \tif strings.EqualFold(strings.TrimSpace(datastoreType), \"nfs\") {\ntransport.go:43: \t\treturn TransportNFS\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestClassifyTransport (0.00s)\n    transport_test.go:87: NFS datastore wins over HBA: ClassifyTransport(\"NFS\", {StorageProtocol: Kind:fibrechannel Model:QLE2672 Driver:}) = \"FC\", want \"NFS\"\n    transport_test.go:87: nfs lowercase: ClassifyTransport(\"nfs\", {StorageProtocol: Kind: Model: Driver:}) = \"FC\", want \"NFS\"\n    transport_test.go:87: NVMe storage protocol on any HBA: ClassifyTransport(\"VMFS\", {StorageProtocol:nvme Kind:block Model:PM9A3 Driver:}) = \"FC\", want \"NVMe\"\n    transport_test.go:87: internet SCSI HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:internetscsi Model:VMware Virtual iSCSI Driver:vmkata}) = \"FC\", want \"iSCSI\"\n    transport_test.go:87: block HBA with NVMe model: ClassifyTransport(\"VMFS\", {StorageProtocol:nvme Kind:block Model:Samsung MZWL NVMe Driver:}) = \"FC\", want \"NVMe\"\n    transport_test.go:87: block HBA with iSCSI model: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind:block Model:Chelsio iSCSI Driver:cxgbe}) = \"FC\", want \"iSCSI\"\n    transport_test.go:87: local parallel SCSI degrades to unknown: ClassifyTransport(\"local\", {StorageProtocol:scsi Kind:parallelscsi Model:PVSCSI SCSI Controller Driver:}) = \"FC\", want \"unknown\"\n    transport_test.go:87: unrecognized block HBA degrades to unknown: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:block Model:Dell PERC H730 Mini Driver:}) = \"FC\", want \"unknown\"\n    transport_test.go:87: no HBA info degrades to unknown: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind: Model: Driver:}) = \"FC\", want \"unknown\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.279s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M02",
+  "desc": "ClassifyTransport short-circuits: always unknown",
+  "file": "inventory/transport.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M02' inventory/transport.go\n41:\treturn TransportUnknown // MUTANT M02\n\ntransport.go:39: // the answer: a single VMFS datastore may sit on FC, iSCSI or NVMe storage.\ntransport.go:40: func ClassifyTransport(datastoreType string, hba HBADescriptor) string {\ntransport.go:41: \treturn TransportUnknown // MUTANT M02\ntransport.go:42: \tif strings.EqualFold(strings.TrimSpace(datastoreType), \"nfs\") {\ntransport.go:43: \t\treturn TransportNFS\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestClassifyTransport (0.00s)\n    transport_test.go:87: NFS datastore wins over HBA: ClassifyTransport(\"NFS\", {StorageProtocol: Kind:fibrechannel Model:QLE2672 Driver:}) = \"unknown\", want \"NFS\"\n    transport_test.go:87: nfs lowercase: ClassifyTransport(\"nfs\", {StorageProtocol: Kind: Model: Driver:}) = \"unknown\", want \"NFS\"\n    transport_test.go:87: NVMe storage protocol on any HBA: ClassifyTransport(\"VMFS\", {StorageProtocol:nvme Kind:block Model:PM9A3 Driver:}) = \"unknown\", want \"NVMe\"\n    transport_test.go:87: fibre channel HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:fibrechannel Model:QLE2672 Driver:}) = \"unknown\", want \"FC\"\n    transport_test.go:87: fibre channel over ethernet HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind:fibrechannelethernet Model:FCoE Driver:}) = \"unknown\", want \"FC\"\n    transport_test.go:87: internet SCSI HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:internetscsi Model:VMware Virtual iSCSI Driver:vmkata}) = \"unknown\", want \"iSCSI\"\n    transport_test.go:87: block HBA with NVMe model: ClassifyTransport(\"VMFS\", {StorageProtocol:nvme Kind:block Model:Samsung MZWL NVMe Driver:}) = \"unknown\", want \"NVMe\"\n    transport_test.go:87: block HBA with iSCSI model: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind:block Model:Chelsio iSCSI Driver:cxgbe}) = \"unknown\", want \"iSCSI\"\n    transport_test.go:87: block HBA with fibre channel model: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind:block Model:Emulex Beacon2 FC Driver:}) = \"unknown\", want \"FC\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.492s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M03",
+  "desc": "Invert FC <-> iSCSI in the HBA-kind switch",
+  "file": "inventory/transport.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M03' inventory/transport.go\n54:\t\treturn TransportISCSI // MUTANT M03\n56:\t\treturn TransportFC // MUTANT M03\n\ntransport.go:52: \tswitch kind {\ntransport.go:53: \tcase \"fibrechannel\", \"fibrechannelethernet\", \"fc\", \"fcoe\":\ntransport.go:54: \t\treturn TransportISCSI // MUTANT M03\ntransport.go:55: \tcase \"internetscsi\", \"iscsi\":\ntransport.go:56: \t\treturn TransportFC // MUTANT M03\n\ntransport.go:54: \t\treturn TransportISCSI // MUTANT M03\ntransport.go:55: \tcase \"internetscsi\", \"iscsi\":\ntransport.go:56: \t\treturn TransportFC // MUTANT M03\ntransport.go:57: \tcase \"block\":\ntransport.go:58: \t\tswitch {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestClassifyTransport (0.00s)\n    transport_test.go:87: fibre channel HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:fibrechannel Model:QLE2672 Driver:}) = \"iSCSI\", want \"FC\"\n    transport_test.go:87: fibre channel over ethernet HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol: Kind:fibrechannelethernet Model:FCoE Driver:}) = \"iSCSI\", want \"FC\"\n    transport_test.go:87: internet SCSI HBA class: ClassifyTransport(\"VMFS\", {StorageProtocol:scsi Kind:internetscsi Model:VMware Virtual iSCSI Driver:vmkata}) = \"FC\", want \"iSCSI\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t3.042s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M04",
+  "desc": "Delete the NFS-wins-over-HBA rule",
+  "file": "inventory/transport.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M04' inventory/transport.go\n41:\t// MUTANT M04: NFS rule deleted\n\ntransport.go:39: // the answer: a single VMFS datastore may sit on FC, iSCSI or NVMe storage.\ntransport.go:40: func ClassifyTransport(datastoreType string, hba HBADescriptor) string {\ntransport.go:41: \t// MUTANT M04: NFS rule deleted\ntransport.go:42: \ntransport.go:43: \tif strings.EqualFold(strings.TrimSpace(hba.StorageProtocol), \"nvme\") {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestClassifyTransport (0.00s)\n    transport_test.go:87: NFS datastore wins over HBA: ClassifyTransport(\"NFS\", {StorageProtocol: Kind:fibrechannel Model:QLE2672 Driver:}) = \"FC\", want \"NFS\"\n    transport_test.go:87: nfs lowercase: ClassifyTransport(\"nfs\", {StorageProtocol: Kind: Model: Driver:}) = \"unknown\", want \"NFS\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t3.050s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M05",
+  "desc": "GiB divisor 1<<30 -> 1<<29",
+  "file": "inventory/format.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M05' inventory/format.go\n8:\tgib = int64(1) << 29 // MUTANT M05\n\nformat.go:6: \tkib = int64(1) << 10\nformat.go:7: \tmib = int64(1) << 20\nformat.go:8: \tgib = int64(1) << 29 // MUTANT M05\nformat.go:9: \ttib = int64(1) << 40\nformat.go:10: )\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestFormatBytes (0.00s)\n    format_test.go:22: FormatBytes(536870912) = \"1.0GiB\", want \"0.5GiB\"\n    format_test.go:22: FormatBytes(1073741824) = \"2.0GiB\", want \"1.0GiB\"\n    format_test.go:22: FormatBytes(3758096384) = \"7.0GiB\", want \"3.5GiB\"\n    format_test.go:22: FormatBytes(1098974756864) = \"2047.0GiB\", want \"1023.5GiB\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t3.167s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M06",
+  "desc": "FormatBytes rounding %.1f -> %.0f",
+  "file": "inventory/format.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M06' inventory/format.go\n22:\treturn fmt.Sprintf(\"%.0fGiB\", gibf) // MUTANT M06\n\nformat.go:20: \t\treturn fmt.Sprintf(\"%.1fTiB\", float64(b)/float64(tib))\nformat.go:21: \t}\nformat.go:22: \treturn fmt.Sprintf(\"%.0fGiB\", gibf) // MUTANT M06\nformat.go:23: }\nformat.go:24: \n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestFormatBytes (0.00s)\n    format_test.go:22: FormatBytes(0) = \"0GiB\", want \"0.0GiB\"\n    format_test.go:22: FormatBytes(1048576) = \"0GiB\", want \"0.0GiB\"\n    format_test.go:22: FormatBytes(536870912) = \"0GiB\", want \"0.5GiB\"\n    format_test.go:22: FormatBytes(1073741824) = \"1GiB\", want \"1.0GiB\"\n    format_test.go:22: FormatBytes(3758096384) = \"4GiB\", want \"3.5GiB\"\n    format_test.go:22: FormatBytes(1098974756864) = \"1024GiB\", want \"1023.5GiB\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.235s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M07",
+  "desc": "FormatBytes returns a constant",
+  "file": "inventory/format.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M07' inventory/format.go\n15:\treturn \"1.0GiB\" // MUTANT M07\n\nformat.go:13: // Negative values (the StorageUnknown sentinel) render as \"unknown\".\nformat.go:14: func FormatBytes(b int64) string {\nformat.go:15: \treturn \"1.0GiB\" // MUTANT M07\nformat.go:16: \tif b < 0 {\nformat.go:17: \t\treturn \"unknown\"\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestFormatBytes (0.00s)\n    format_test.go:22: FormatBytes(-1) = \"1.0GiB\", want \"unknown\"\n    format_test.go:22: FormatBytes(0) = \"1.0GiB\", want \"0.0GiB\"\n    format_test.go:22: FormatBytes(1048576) = \"1.0GiB\", want \"0.0GiB\"\n    format_test.go:22: FormatBytes(536870912) = \"1.0GiB\", want \"0.5GiB\"\n    format_test.go:22: FormatBytes(3758096384) = \"1.0GiB\", want \"3.5GiB\"\n    format_test.go:22: FormatBytes(1098974756864) = \"1.0GiB\", want \"1023.5GiB\"\n    format_test.go:22: FormatBytes(1099511627776) = \"1.0GiB\", want \"1.0TiB\"\n    format_test.go:22: FormatBytes(2748779069440) = \"1.0GiB\", want \"2.5TiB\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.330s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M08",
+  "desc": "UsedBytes returns the zero value",
+  "file": "inventory/format.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M08' inventory/format.go\n28:\treturn 0 // MUTANT M08\n\nformat.go:26: // zero so inconsistent input cannot produce a negative used value.\nformat.go:27: func UsedBytes(total, available int64) int64 {\nformat.go:28: \treturn 0 // MUTANT M08\nformat.go:29: \tused := total - available\nformat.go:30: \tif used < 0 {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListDatastores (0.20s)\n    datastore_test.go:42: datastore LocalDS_0: used+available = 10962904023040, want capacity 10995116277760\n--- FAIL: TestUsedBytes (0.00s)\n    format_test.go:43: normal: UsedBytes(100, 30) = 0, want 70\n    format_test.go:43: fully used: UsedBytes(100, 0) = 0, want 100\n    format_test.go:43: gib scale: UsedBytes(5368709120, 2147483648) = 0, want 3221225472\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.574s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M09",
+  "desc": "VM RAM hardcoded to a plausible 4 GiB",
+  "file": "inventory/vm.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M09' inventory/vm.go\n54:\t\tinfo.RAMBytes = 4 * gib // MUTANT M09\n\nvm.go:52: \tif vm.Config != nil {\nvm.go:53: \t\tinfo.VCPU = int(vm.Config.Hardware.NumCPU)\nvm.go:54: \t\tinfo.RAMBytes = 4 * gib // MUTANT M09\nvm.go:55: \t}\nvm.go:56: \treturn info\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.310s",
+  "revert_clean": true
+ },
+ {
+  "id": "M10",
+  "desc": "VM vCPU hardcoded to 2",
+  "file": "inventory/vm.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M10' inventory/vm.go\n53:\t\tinfo.VCPU = 2 // MUTANT M10\n\nvm.go:51: \tinfo := VMInfo{Name: vm.Name, StorageBytes: committedBytes(vm)}\nvm.go:52: \tif vm.Config != nil {\nvm.go:53: \t\tinfo.VCPU = 2 // MUTANT M10\nvm.go:54: \t\tinfo.RAMBytes = int64(vm.Config.Hardware.MemoryMB) * mib\nvm.go:55: \t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.302s",
+  "revert_clean": true
+ },
+ {
+  "id": "M11",
+  "desc": "committedBytes body deleted, returns 0",
+  "file": "inventory/vm.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M11' inventory/vm.go\n88:\treturn 0 // MUTANT M11\n\nvm.go:86: // in the VM's layout.\nvm.go:87: func committedBytes(vm *mo.VirtualMachine) int64 {\nvm.go:88: \treturn 0 // MUTANT M11\nvm.go:89: \tif vm.Summary.Storage != nil && vm.Summary.Storage.Committed > 0 {\nvm.go:90: \t\treturn vm.Summary.Storage.Committed\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.262s",
+  "revert_clean": true
+ },
+ {
+  "id": "M12",
+  "desc": "committedBytes hardcoded to a plausible 42 GiB",
+  "file": "inventory/vm.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M12' inventory/vm.go\n88:\treturn 42 * gib // MUTANT M12\n\nvm.go:86: // in the VM's layout.\nvm.go:87: func committedBytes(vm *mo.VirtualMachine) int64 {\nvm.go:88: \treturn 42 * gib // MUTANT M12\nvm.go:89: \tif vm.Summary.Storage != nil && vm.Summary.Storage.Committed > 0 {\nvm.go:90: \t\treturn vm.Summary.Storage.Committed\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t2.981s",
+  "revert_clean": true
+ },
+ {
+  "id": "M13",
+  "desc": "collectVMs swallows the API error, returns nil slice",
+  "file": "inventory/vm.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M13' inventory/vm.go\n78:\t\treturn nil, nil // MUTANT M13\n\nvm.go:76: \tvar objs []mo.VirtualMachine\nvm.go:77: \tif err := property.DefaultCollector(c).Retrieve(ctx, refs, props, &objs); err != nil {\nvm.go:78: \t\treturn nil, nil // MUTANT M13\nvm.go:79: \t}\nvm.go:80: \treturn objs, nil\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t2.660s",
+  "revert_clean": true
+ },
+ {
+  "id": "M14",
+  "desc": "ListVMs sorts descending",
+  "file": "inventory/vm.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M14' inventory/vm.go\n45:\tsort.Slice(infos, func(i, j int) bool { return infos[i].Name > infos[j].Name }) // MUTANT M14\n\nvm.go:43: \t}\nvm.go:44: \nvm.go:45: \tsort.Slice(infos, func(i, j int) bool { return infos[i].Name > infos[j].Name }) // MUTANT M14\nvm.go:46: \treturn infos, nil\nvm.go:47: }\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListVMs (0.22s)\n    vm_test.go:35: VMs not sorted by name: \"DC0_H0_VM2\" before \"DC0_H0_VM1\"\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.796s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M15",
+  "desc": "Datastore capacity hardcoded to 1 TiB",
+  "file": "inventory/datastore.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M15' inventory/datastore.go\n51:\t\t\tCapacityBytes:  1 << 40, // MUTANT M15\n\ndatastore.go:49: \t\t\tName:           ds.Name,\ndatastore.go:50: \t\t\tType:           datastoreTransport(hosts, ds),\ndatastore.go:51: \t\t\tCapacityBytes:  1 << 40, // MUTANT M15\ndatastore.go:52: \t\t\tAvailableBytes: ds.Summary.FreeSpace,\ndatastore.go:53: \t\t\tUsedBytes:      used,\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListDatastores (0.21s)\n    datastore_test.go:36: datastore LocalDS_0: available 10962904023040 > capacity 1099511627776\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.415s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M16",
+  "desc": "Capacity/available/used ALL fabricated but self-consistent",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M16' inventory/datastore.go\n48:\t\t_ = used // MUTANT M16\n52:\t\t\tCapacityBytes:  1 << 40, // MUTANT M16\n53:\t\t\tAvailableBytes: 400 << 30, // MUTANT M16\n54:\t\t\tUsedBytes:      624 << 30, // MUTANT M16\n\ndatastore.go:46: \t\tds := &objs[i]\ndatastore.go:47: \t\tused := UsedBytes(ds.Summary.Capacity, ds.Summary.FreeSpace)\ndatastore.go:48: \t\t_ = used // MUTANT M16\ndatastore.go:49: \t\tinfos = append(infos, DatastoreInfo{\ndatastore.go:50: \t\t\tName:           ds.Name,\n\ndatastore.go:50: \t\t\tName:           ds.Name,\ndatastore.go:51: \t\t\tType:           datastoreTransport(hosts, ds),\ndatastore.go:52: \t\t\tCapacityBytes:  1 << 40, // MUTANT M16\ndatastore.go:53: \t\t\tAvailableBytes: 400 << 30, // MUTANT M16\ndatastore.go:54: \t\t\tUsedBytes:      624 << 30, // MUTANT M16\n\ndatastore.go:51: \t\t\tType:           datastoreTransport(hosts, ds),\ndatastore.go:52: \t\t\tCapacityBytes:  1 << 40, // MUTANT M16\ndatastore.go:53: \t\t\tAvailableBytes: 400 << 30, // MUTANT M16\ndatastore.go:54: \t\t\tUsedBytes:      624 << 30, // MUTANT M16\ndatastore.go:55: \t\t})\n\ndatastore.go:52: \t\t\tCapacityBytes:  1 << 40, // MUTANT M16\ndatastore.go:53: \t\t\tAvailableBytes: 400 << 30, // MUTANT M16\ndatastore.go:54: \t\t\tUsedBytes:      624 << 30, // MUTANT M16\ndatastore.go:55: \t\t})\ndatastore.go:56: \t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.466s",
+  "revert_clean": true
+ },
+ {
+  "id": "M17",
+  "desc": "Datastore used = capacity (UsedBytes bypassed)",
+  "file": "inventory/datastore.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M17' inventory/datastore.go\n47:\t\tused := ds.Summary.Capacity // MUTANT M17\n\ndatastore.go:45: \tfor i := range objs {\ndatastore.go:46: \t\tds := &objs[i]\ndatastore.go:47: \t\tused := ds.Summary.Capacity // MUTANT M17\ndatastore.go:48: \t\tinfos = append(infos, DatastoreInfo{\ndatastore.go:49: \t\t\tName:           ds.Name,\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListDatastores (0.22s)\n    datastore_test.go:42: datastore LocalDS_0: used+available = 21958020300800, want capacity 10995116277760\nFAIL\nFAIL\tvsphere-inventory/inventory\t2.069s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M18",
+  "desc": "Datastore TYPE hardcoded to FC, real traversal bypassed",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M18' inventory/datastore.go\n39:\t_, err = hostStorages(ctx, c) // MUTANT M18\n50:\t\t\tType:           TransportFC, // MUTANT M18\n\ndatastore.go:37: \t}\ndatastore.go:38: \ndatastore.go:39: \t_, err = hostStorages(ctx, c) // MUTANT M18\ndatastore.go:40: \tif err != nil {\ndatastore.go:41: \t\treturn nil, err\n\ndatastore.go:48: \t\tinfos = append(infos, DatastoreInfo{\ndatastore.go:49: \t\t\tName:           ds.Name,\ndatastore.go:50: \t\t\tType:           TransportFC, // MUTANT M18\ndatastore.go:51: \t\t\tCapacityBytes:  ds.Summary.Capacity,\ndatastore.go:52: \t\t\tAvailableBytes: ds.Summary.FreeSpace,\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.279s",
+  "revert_clean": true
+ },
+ {
+  "id": "M19",
+  "desc": "datastoreTransport body deleted -> always unknown",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M19' inventory/datastore.go\n196:\treturn TransportUnknown // MUTANT M19\n\ndatastore.go:194: // topology), the result degrades to \"unknown\".\ndatastore.go:195: func datastoreTransport(hosts []*hostStorage, ds *mo.Datastore) string {\ndatastore.go:196: \treturn TransportUnknown // MUTANT M19\ndatastore.go:197: \tif strings.EqualFold(ds.Summary.Type, \"nfs\") {\ndatastore.go:198: \t\treturn TransportNFS\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.270s",
+  "revert_clean": true
+ },
+ {
+  "id": "M20",
+  "desc": "vmfsUUID body deleted -> always empty",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M20' inventory/datastore.go\n227:\treturn \"\" // MUTANT M20\n\ndatastore.go:225: // vmfs/<uuid>. It returns \"\" when the datastore is not a VMFS path.\ndatastore.go:226: func vmfsUUID(ds *mo.Datastore) string {\ndatastore.go:227: \treturn \"\" // MUTANT M20\ndatastore.go:228: \tif ds.Info == nil {\ndatastore.go:229: \t\treturn \"\"\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.519s",
+  "revert_clean": true
+ },
+ {
+  "id": "M21",
+  "desc": "hostStorages swallows the API error, returns nil",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M21' inventory/datastore.go\n89:\t\treturn nil, nil // MUTANT M21\n\ndatastore.go:87: \tif err := property.DefaultCollector(c).Retrieve(ctx, refs,\ndatastore.go:88: \t\t[]string{\"name\", \"config.storageDevice\", \"config.fileSystemVolume\"}, &objs); err != nil {\ndatastore.go:89: \t\treturn nil, nil // MUTANT M21\ndatastore.go:90: \t}\ndatastore.go:91: \tstorages := make([]*hostStorage, 0, len(objs))\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.250s",
+  "revert_clean": true
+ },
+ {
+  "id": "M22",
+  "desc": "hbaDescriptor hardcodes every HBA class to fibrechannel",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M22' inventory/datastore.go\n163:\t\tKind:            \"fibrechannel\", // MUTANT M22\n\ndatastore.go:161: \tdesc := HBADescriptor{\ndatastore.go:162: \t\tStorageProtocol: base.StorageProtocol,\ndatastore.go:163: \t\tKind:            \"fibrechannel\", // MUTANT M22\ndatastore.go:164: \t\tModel:           base.Model,\ndatastore.go:165: \t\tDriver:          base.Driver,\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.258s",
+  "revert_clean": true
+ },
+ {
+  "id": "M23",
+  "desc": "Portgroup<->switch NAME-based fallback matching removed",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M23' inventory/switch.go\n121:\t\t\t\t_ = pgByName // MUTANT M23: name fallback removed\n\nswitch.go:119: \t\t\tfor _, ref := range sw.Portgroup {\nswitch.go:120: \t\t\t\tpg, ok := pgByKey[ref]\nswitch.go:121: \t\t\t\t_ = pgByName // MUTANT M23: name fallback removed\nswitch.go:122: \t\t\t\tif ok && !seen[pg.Key] {\nswitch.go:123: \t\t\t\t\tseen[pg.Key] = true\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.258s",
+  "revert_clean": true
+ },
+ {
+  "id": "M24",
+  "desc": "Portgroup<->switch KEY index never populated",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M24' inventory/switch.go\n101:\t\t\t_ = pg.Key // MUTANT M24: key index not populated\n\nswitch.go:99: \t\tpgByName := map[string]types.HostPortGroup{}\nswitch.go:100: \t\tfor _, pg := range net.Portgroup {\nswitch.go:101: \t\t\t_ = pg.Key // MUTANT M24: key index not populated\nswitch.go:102: \t\t\tpgByName[pg.Spec.Name] = pg\nswitch.go:103: \t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.266s",
+  "revert_clean": true
+ },
+ {
+  "id": "M25",
+  "desc": "Standard portgroup VLAN hardcoded to 100",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M25' inventory/switch.go\n150:\t\t\t\t\tVLAN:       \"100\", // MUTANT M25\n\nswitch.go:148: \t\t\t\t\tSwitchType: \"standard\",\nswitch.go:149: \t\t\t\t\tPortgroup:  pg.Spec.Name,\nswitch.go:150: \t\t\t\t\tVLAN:       \"100\", // MUTANT M25\nswitch.go:151: \t\t\t\t\tUplinks:    joinOrUnknown(uplinks),\nswitch.go:152: \t\t\t\t\tLACP:       \"N/A\",\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.243s",
+  "revert_clean": true
+ },
+ {
+  "id": "M26",
+  "desc": "dvpgVLAN body deleted -> always \"0\"",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M26' inventory/switch.go\n285:\treturn \"0\" // MUTANT M26\n\nswitch.go:283: // range(s).\nswitch.go:284: func dvpgVLAN(setting types.BaseDVPortSetting) string {\nswitch.go:285: \treturn \"0\" // MUTANT M26\nswitch.go:286: \tvmware, ok := setting.(*types.VMwareDVSPortSetting)\nswitch.go:287: \tif !ok || vmware.Vlan == nil {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.269s",
+  "revert_clean": true
+ },
+ {
+  "id": "M27",
+  "desc": "DVS total port count hardcoded to 6144",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M27' inventory/switch.go\n231:\t\ttotal := 6144 // MUTANT M27\n\nswitch.go:229: \t\t}\nswitch.go:230: \nswitch.go:231: \t\ttotal := 6144 // MUTANT M27\nswitch.go:232: \t\tused := int(cfg.NumPorts)\nswitch.go:233: \t\tif total < used {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.259s",
+  "revert_clean": true
+ },
+ {
+  "id": "M28",
+  "desc": "DVS used port count hardcoded to 8",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M28' inventory/switch.go\n232:\t\tused := 8 // MUTANT M28\n\nswitch.go:230: \nswitch.go:231: \t\ttotal := int(cfg.MaxPorts)\nswitch.go:232: \t\tused := 8 // MUTANT M28\nswitch.go:233: \t\tif total < used {\nswitch.go:234: \t\t\ttotal = used\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.285s",
+  "revert_clean": true
+ },
+ {
+  "id": "M29",
+  "desc": "Standard vSwitch total ports hardcoded to 1024 (both emit sites)",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M29' inventory/switch.go\n139:\t\t\t\t\tPorts:      1024, // MUTANT M29\n153:\t\t\t\t\tPorts:      1024, // MUTANT M29\n\nswitch.go:137: \t\t\t\t\tUplinks:    joinOrUnknown(uplinks),\nswitch.go:138: \t\t\t\t\tLACP:       \"N/A\",\nswitch.go:139: \t\t\t\t\tPorts:      1024, // MUTANT M29\nswitch.go:140: \t\t\t\t\tUsed:       int(used),\nswitch.go:141: \t\t\t\t})\n\nswitch.go:151: \t\t\t\t\tUplinks:    joinOrUnknown(uplinks),\nswitch.go:152: \t\t\t\t\tLACP:       \"N/A\",\nswitch.go:153: \t\t\t\t\tPorts:      1024, // MUTANT M29\nswitch.go:154: \t\t\t\t\tUsed:       int(used),\nswitch.go:155: \t\t\t\t})\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.262s",
+  "revert_clean": true
+ },
+ {
+  "id": "M30",
+  "desc": "Standard vSwitch used ports hardcoded to 0",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M30' inventory/switch.go\n115:\t\t\tused := int64(0) // MUTANT M30\n\nswitch.go:113: \t\t\t}\nswitch.go:114: \nswitch.go:115: \t\t\tused := int64(0) // MUTANT M30\nswitch.go:116: \nswitch.go:117: \t\t\tpgs := make([]types.HostPortGroup, 0, len(sw.Portgroup))\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.278s",
+  "revert_clean": true
+ },
+ {
+  "id": "M31",
+  "desc": "DVS LACP always reported enabled",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M31' inventory/switch.go\n219:\t\tlacp := \"enabled\" // MUTANT M31\n\nswitch.go:217: \t\t}\nswitch.go:218: \nswitch.go:219: \t\tlacp := \"enabled\" // MUTANT M31\nswitch.go:220: \t\tif vmware, ok := dvs.Config.(*types.VMwareDVSConfigInfo); ok {\nswitch.go:221: \t\t\tfor _, group := range vmware.LacpGroupConfig {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.265s",
+  "revert_clean": true
+ },
+ {
+  "id": "M32",
+  "desc": "DVS uplink names dropped",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M32' inventory/switch.go\n214:\t\t\t_ = ref // MUTANT M32: uplink names dropped\n\nswitch.go:212: \t\tuplinks := make([]string, 0, len(cfg.UplinkPortgroup))\nswitch.go:213: \t\tfor _, ref := range cfg.UplinkPortgroup {\nswitch.go:214: \t\t\t_ = ref // MUTANT M32: uplink names dropped\nswitch.go:215: \t\t}\nswitch.go:216: \n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.269s",
+  "revert_clean": true
+ },
+ {
+  "id": "M33",
+  "desc": "vmInPortgroup always true (filter disabled)",
+  "file": "inventory/portgroup.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M33' inventory/portgroup.go\n85:\treturn true // MUTANT M33\n\nportgroup.go:83: \nportgroup.go:84: func vmInPortgroup(vm *mo.VirtualMachine, match map[string]bool) bool {\nportgroup.go:85: \treturn true // MUTANT M33\nportgroup.go:86: \tfor _, ref := range vm.Network {\nportgroup.go:87: \t\tif match[ref.Value] {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestVMsInPortgroup (0.23s)\n    portgroup_test.go:57: VMsInPortgroup(\"VM Network\") = 3 VMs, want 0\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.268s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M34",
+  "desc": "vmInPortgroup always false",
+  "file": "inventory/portgroup.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M34' inventory/portgroup.go\n85:\treturn false // MUTANT M34\n\nportgroup.go:83: \nportgroup.go:84: func vmInPortgroup(vm *mo.VirtualMachine, match map[string]bool) bool {\nportgroup.go:85: \treturn false // MUTANT M34\nportgroup.go:86: \tfor _, ref := range vm.Network {\nportgroup.go:87: \t\tif match[ref.Value] {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestVMsInPortgroup (0.23s)\n    portgroup_test.go:42: VMsInPortgroup(\"DC0_DVPG0\") = [], want exactly [DC0_H0_VM0 DC0_H0_VM1 DC0_H0_VM2]\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.266s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M35",
+  "desc": "Portgroup name match ignores the requested name",
+  "file": "inventory/portgroup.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M35' inventory/portgroup.go\n45:\t\t\tif objs[i].Name != \"\" { // MUTANT M35\n\nportgroup.go:43: \t\t\t}\nportgroup.go:44: \t\t\tseen[objs[i].Self.Value] = true\nportgroup.go:45: \t\t\tif objs[i].Name != \"\" { // MUTANT M35\nportgroup.go:46: \t\t\t\tmatch[objs[i].Self.Value] = true\nportgroup.go:47: \t\t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestVMsInPortgroup (0.24s)\n    portgroup_test.go:57: VMsInPortgroup(\"VM Network\") = 3 VMs, want 0\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.298s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M36",
+  "desc": "viewRefs swallows the Find error, returns nil slice",
+  "file": "inventory/collect.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M36' inventory/collect.go\n34:\t\treturn nil, nil // MUTANT M36\n\ncollect.go:32: \trefs, err := v.Find(ctx, nil, nil)\ncollect.go:33: \tif err != nil {\ncollect.go:34: \t\treturn nil, nil // MUTANT M36\ncollect.go:35: \t}\ncollect.go:36: \treturn refs, nil\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.252s",
+  "revert_clean": true
+ },
+ {
+  "id": "M37",
+  "desc": "Precedence swap: flags demoted to the DEFAULT layer (flag < env)",
+  "file": "config/config.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M37' config/config.go\n71:\t\tif f.Changed { // MUTANT M37: flag becomes the DEFAULT layer\n\nconfig.go:69: \t\t\treturn fmt.Errorf(\"flag --%s is not defined on the command\", key)\nconfig.go:70: \t\t}\nconfig.go:71: \t\tif f.Changed { // MUTANT M37: flag becomes the DEFAULT layer\nconfig.go:72: \t\t\tv.SetDefault(key, f.Value.String())\nconfig.go:73: \t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\n--- FAIL: TestPrecedence (0.00s)\n    config_test.go:72: URL = \"env-url\", want flag-url (flag must override env and file)\nFAIL\nFAIL\tvsphere-inventory/config\t0.248s\nok  \tvsphere-inventory/inventory\t(cached)\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M38",
+  "desc": "Precedence swap: env layer disabled (env < file)",
+  "file": "config/config.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M38' config/config.go\n57:\t// v.AutomaticEnv() // MUTANT M38\n\nconfig.go:55: \tv.SetEnvPrefix(EnvPrefix)\nconfig.go:56: \tv.SetEnvKeyReplacer(strings.NewReplacer(\"-\", \"_\"))\nconfig.go:57: \t// v.AutomaticEnv() // MUTANT M38\nconfig.go:58: \nconfig.go:59: \treturn v, nil\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\n--- FAIL: TestPrecedence (0.00s)\n    config_test.go:47: URL = \"file-url\", want env-url (env must override file)\n    config_test.go:50: Username = \"file-user\", want env-user (env must override file)\n--- FAIL: TestDefaults (0.00s)\n    config_test.go:91: Load: no vCenter URL configured; set --url, the VSPHERE_URL environment variable, or url in the config file\n--- FAIL: TestLoadEnvOnly (0.00s)\n    config_test.go:147: Load: no vCenter URL configured; set --url, the VSPHERE_URL environment variable, or url in the config file\nFAIL\nFAIL\tvsphere-inventory/config\t0.236s\nok  \tvsphere-inventory/inventory\t(cached)\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M39",
+  "desc": "Load ignores the resolved timeout, returns the built-in default",
+  "file": "config/config.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M39' config/config.go\n95:\tcfg.Timeout = DefaultTimeout // MUTANT M39\n\nconfig.go:93: \t\treturn Config{}, fmt.Errorf(\"timeout must be a positive duration, got %q\", raw)\nconfig.go:94: \t}\nconfig.go:95: \tcfg.Timeout = DefaultTimeout // MUTANT M39\nconfig.go:96: \nconfig.go:97: \tif cfg.URL == \"\" {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\n--- FAIL: TestPrecedence (0.00s)\n    config_test.go:53: Timeout = 1m0s, want 5s (from config file)\n    config_test.go:75: Timeout = 1m0s, want 5s (flag for timeout was not set, file value must stand)\n--- FAIL: TestLoadEnvOnly (0.00s)\n    config_test.go:162: Timeout = 1m0s, want 42s\nFAIL\nFAIL\tvsphere-inventory/config\t0.240s\nok  \tvsphere-inventory/inventory\t(cached)\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M40",
+  "desc": "Load skips the required-URL check",
+  "file": "config/config.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M40' config/config.go\n97:\t// MUTANT M40: required-URL check deleted\n\nconfig.go:95: \tcfg.Timeout = d\nconfig.go:96: \nconfig.go:97: \t// MUTANT M40: required-URL check deleted\nconfig.go:98: \nconfig.go:99: \treturn cfg, nil\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\n--- FAIL: TestLoadRequiresURL (0.00s)\n    config_test.go:110: Load: expected an error when no URL is configured anywhere\nFAIL\nFAIL\tvsphere-inventory/config\t0.247s\nok  \tvsphere-inventory/inventory\t(cached)\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M41",
+  "desc": "parseVCenterURL builds an unusable ftp:// URL",
+  "file": "cmd/root.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M41' cmd/root.go\n65:\t\ts = \"ftp://\" + s // MUTANT M41\n\nroot.go:63: func parseVCenterURL(s string) (*url.URL, error) {\nroot.go:64: \tif !strings.Contains(s, \"://\") {\nroot.go:65: \t\ts = \"ftp://\" + s // MUTANT M41\nroot.go:66: \t}\nroot.go:67: \tu, err := url.Parse(s)\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t(cached)",
+  "revert_clean": true
+ },
+ {
+  "id": "M42",
+  "desc": "runWithClient never attaches credentials",
+  "file": "cmd/root.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M42' cmd/root.go\n90:\tif false && cfg.Username != \"\" { // MUTANT M42\n\nroot.go:88: \t\treturn err\nroot.go:89: \t}\nroot.go:90: \tif false && cfg.Username != \"\" { // MUTANT M42\nroot.go:91: \t\t// govmomi.NewClient only logs in when the URL carries userinfo, so\nroot.go:92: \t\t// attach the configured credentials explicitly.\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t(cached)",
+  "revert_clean": true
+ },
+ {
+  "id": "M43",
+  "desc": "standardSwitches returns nothing (whole path deleted)",
+  "file": "inventory/switch.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M43' inventory/switch.go\n54:\treturn nil, nil // MUTANT M43\n\nswitch.go:52: \nswitch.go:53: func standardSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {\nswitch.go:54: \treturn nil, nil // MUTANT M43\nswitch.go:55: \trefs, err := viewRefs(ctx, c, []string{\"HostSystem\"})\nswitch.go:56: \tif err != nil {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListSwitches (0.23s)\n    switch_test.go:72: expected at least one standard switch, rows: [{Switch:DVS0 SwitchType:distributed Portgroup:DC0_DVPG0 VLAN:0 Uplinks:unknown LACP:disabled Ports:0 Used:0} {Switch:DVS0 SwitchType:distributed Portgroup:DVS0-DVUplinks-8 VLAN:0-4094 Uplinks:unknown LACP:disabled Ports:0 Used:0}]\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.273s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M44",
+  "desc": "distributedSwitches returns nothing (whole DVS path deleted)",
+  "file": "inventory/switch.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M44' inventory/switch.go\n163:\treturn nil, nil // MUTANT M44\n\nswitch.go:161: \nswitch.go:162: func distributedSwitches(ctx context.Context, c *vim25.Client) ([]SwitchInfo, error) {\nswitch.go:163: \treturn nil, nil // MUTANT M44\nswitch.go:164: \tv, err := rootView(ctx, c, []string{\"DistributedVirtualSwitch\", \"VmwareDistributedVirtualSwitch\"})\nswitch.go:165: \tif err != nil {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestVMsInPortgroup (0.22s)\n    portgroup_test.go:27: distributed port group DC0_DVPG0 not found in switch listing: [{Switch:vSwitch0 SwitchType:standard Portgroup:VM Network VLAN:0 Uplinks:unknown LACP:N/A Ports:0 Used:0}]\n--- FAIL: TestListSwitches (0.23s)\n    switch_test.go:75: expected at least one distributed switch, rows: [{Switch:vSwitch0 SwitchType:standard Portgroup:VM Network VLAN:0 Uplinks:unknown LACP:N/A Ports:0 Used:0}]\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.251s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M45",
+  "desc": "newHostStorage body deleted: no volumes, no LUN topology, no HBAs",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M45' inventory/datastore.go\n104:\treturn hs // MUTANT M45\n\ndatastore.go:102: \t\thbaByName:       map[string]HBADescriptor{},\ndatastore.go:103: \t}\ndatastore.go:104: \treturn hs // MUTANT M45\ndatastore.go:105: \tcfg := host.Config\ndatastore.go:106: \tif cfg == nil {\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.265s",
+  "revert_clean": true
+ },
+ {
+  "id": "M46",
+  "desc": "joinOrUnknown always returns \"unknown\"",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M46' inventory/switch.go\n311:\treturn \"unknown\" // MUTANT M46\n\nswitch.go:309: \nswitch.go:310: func joinOrUnknown(items []string) string {\nswitch.go:311: \treturn \"unknown\" // MUTANT M46\nswitch.go:312: \tif len(items) == 0 {\nswitch.go:313: \t\treturn \"unknown\"\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.291s",
+  "revert_clean": true
+ },
+ {
+  "id": "M47",
+  "desc": "hbaDescriptor returns the zero descriptor",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M47' inventory/datastore.go\n161:\treturn HBADescriptor{} // MUTANT M47\n\ndatastore.go:159: \ndatastore.go:160: func hbaDescriptor(hba types.BaseHostHostBusAdapter, base *types.HostHostBusAdapter) HBADescriptor {\ndatastore.go:161: \treturn HBADescriptor{} // MUTANT M47\ndatastore.go:162: \tdesc := HBADescriptor{\ndatastore.go:163: \t\tStorageProtocol: base.StorageProtocol,\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.256s",
+  "revert_clean": true
+ },
+ {
+  "id": "M48",
+  "desc": "ListDatastores never fetches host storage",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M48' inventory/datastore.go\n39:\tvar hosts []*hostStorage // MUTANT M48: host storage never fetched\n\ndatastore.go:37: \t}\ndatastore.go:38: \ndatastore.go:39: \tvar hosts []*hostStorage // MUTANT M48: host storage never fetched\ndatastore.go:40: \ndatastore.go:41: \tinfos := make([]DatastoreInfo, 0, len(objs))\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.267s",
+  "revert_clean": true
+ },
+ {
+  "id": "M49",
+  "desc": "VMFS volume<->datastore matching disabled",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M49' inventory/datastore.go\n200:\t_ = uuid // MUTANT M49\n203:\t\t\tif true { // MUTANT M49: volume matching disabled\n\ndatastore.go:198: \t}\ndatastore.go:199: \tuuid := vmfsUUID(ds)\ndatastore.go:200: \t_ = uuid // MUTANT M49\ndatastore.go:201: \tfor _, hs := range hosts {\ndatastore.go:202: \t\tfor _, vol := range hs.volumes {\n\ndatastore.go:201: \tfor _, hs := range hosts {\ndatastore.go:202: \t\tfor _, vol := range hs.volumes {\ndatastore.go:203: \t\t\tif true { // MUTANT M49: volume matching disabled\ndatastore.go:204: \t\t\t\tcontinue\ndatastore.go:205: \t\t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.273s",
+  "revert_clean": true
+ },
+ {
+  "id": "M50",
+  "desc": "LUN -> adapter topology walk deleted",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M50' inventory/datastore.go\n121:\t\t\t\t\t\t_ = lun // MUTANT M50: topology walk deleted\n\ndatastore.go:119: \t\t\t\tfor _, target := range iface.Target {\ndatastore.go:120: \t\t\t\t\tfor _, lun := range target.Lun {\ndatastore.go:121: \t\t\t\t\t\t_ = lun // MUTANT M50: topology walk deleted\ndatastore.go:122: \t\t\t\t\t}\ndatastore.go:123: \t\t\t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.372s",
+  "revert_clean": true
+ },
+ {
+  "id": "M51",
+  "desc": "VMFS volume matching inverted",
+  "file": "inventory/datastore.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M51' inventory/datastore.go\n202:\t\t\tif vol.name == ds.Name || (uuid != \"\" && vol.uuid == uuid) { // MUTANT M51\n\ndatastore.go:200: \tfor _, hs := range hosts {\ndatastore.go:201: \t\tfor _, vol := range hs.volumes {\ndatastore.go:202: \t\t\tif vol.name == ds.Name || (uuid != \"\" && vol.uuid == uuid) { // MUTANT M51\ndatastore.go:203: \t\t\t\tcontinue\ndatastore.go:204: \t\t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.269s",
+  "revert_clean": true
+ },
+ {
+  "id": "M52",
+  "desc": "networkViewTypes reduced to Network only (DVPG subtype dropped)",
+  "file": "inventory/portgroup.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M52' inventory/portgroup.go\n20:var networkViewTypes = []string{ // MUTANT M52\n\nportgroup.go:18: // networkViewTypes are every network kind a port group can be. They are\nportgroup.go:19: // listed explicitly because a container view does not expand subtypes.\nportgroup.go:20: var networkViewTypes = []string{ // MUTANT M52\nportgroup.go:21: \t\"Network\",\nportgroup.go:22: }\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.244s",
+  "revert_clean": true
+ },
+ {
+  "id": "M53",
+  "desc": "VM property list drops config.hardware.memoryMB",
+  "file": "inventory/vm.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M53' inventory/vm.go\n71:\t\t// MUTANT M53: memoryMB property dropped\n\nvm.go:69: \t\t\"name\",\nvm.go:70: \t\t\"config.hardware.numCPU\",\nvm.go:71: \t\t// MUTANT M53: memoryMB property dropped\nvm.go:72: \t\t\"summary.storage.committed\",\nvm.go:73: \t\t\"layoutEx.file\",\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestListVMs (0.22s)\n    vm_test.go:27: VM DC0_H0_VM0: RAM = 0 bytes, want > 0\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.259s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M54",
+  "desc": "VM property list drops the network property",
+  "file": "inventory/vm.go",
+  "status": "CAUGHT",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M54' inventory/vm.go\n74:\t\t// MUTANT M54: network property dropped\n\nvm.go:72: \t\t\"summary.storage.committed\",\nvm.go:73: \t\t\"layoutEx.file\",\nvm.go:74: \t\t// MUTANT M54: network property dropped\nvm.go:75: \t}\nvm.go:76: \tvar objs []mo.VirtualMachine\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\n--- FAIL: TestVMsInPortgroup (0.23s)\n    portgroup_test.go:42: VMsInPortgroup(\"DC0_DVPG0\") = [], want exactly [DC0_H0_VM0 DC0_H0_VM1 DC0_H0_VM2]\nFAIL\nFAIL\tvsphere-inventory/inventory\t1.276s\nFAIL",
+  "revert_clean": true
+ },
+ {
+  "id": "M55",
+  "desc": "DVS portgroup retrieval drops config (VLAN source)",
+  "file": "inventory/switch.go",
+  "status": "SURVIVED",
+  "landed": true,
+  "grep": "$ grep -n 'MUTANT M55' inventory/switch.go\n244:\t\t\t\t[]string{\"name\"}, &pgs); err != nil { // MUTANT M55\n\nswitch.go:242: \t\t\t}\nswitch.go:243: \t\t\tif err := property.DefaultCollector(c).Retrieve(ctx, pgRefs,\nswitch.go:244: \t\t\t\t[]string{\"name\"}, &pgs); err != nil { // MUTANT M55\nswitch.go:245: \t\t\t\treturn nil, fmt.Errorf(\"collect distributed port groups: %w\", err)\nswitch.go:246: \t\t\t}\n",
+  "test_output": "?   \tvsphere-inventory\t[no test files]\n?   \tvsphere-inventory/cmd\t[no test files]\nok  \tvsphere-inventory/config\t(cached)\nok  \tvsphere-inventory/inventory\t1.252s",
+  "revert_clean": true
+ }
+]

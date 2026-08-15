@@ -2,8 +2,8 @@
 name: qwen3.8-27b-bf16
 created: 2026-08-14
 model: Qwen3.8-27B (Apache 2.0 — hybrid linear-attention/SSM **dense** model, arch `qwen35`; 64 blocks, `full_attention_interval = 4` → 16 full-attention + 48 linear/SSM layers; `head_count 24`, `head_count_kv 4`, `key/value_length 256`; vocab 248,320; 262,144 native context; natively multimodal `image-text-to-text`, run text-only. Run at **BF16, native precision** from `ggml-org/Qwen3.8-27B-GGUF` single file `Qwen3.8-27B-BF16.gguf`, 53,808,281,952 B = 50.1 GiB, 851 tensors. Local on Apple M5 Max 128 GiB via Homebrew llama.cpp `llama-server` build 10360; driven via opencode)
-stage: wired
-score:
+stage: audited
+score: 23 / 30
 ---
 
 # Run — qwen3.8-27b-bf16
@@ -266,9 +266,17 @@ silence then a batch flip — the operator predicted this pattern before it happ
 the batch appears real, so the provisional read is batch-*reporting*, not batch-*faking*. The audit
 decides.
 
-**Three compactions fired**, the last at 230,612 tokens / 88% of the window, while item 7 (Makefile,
-README, sample run evidence) was still untouched. That is precisely the payload KAT lost. Whether
-item 7 exists on disk or only in the final message is the **first audit question**.
+**~~Three compactions fired~~ — CORRECTED at audit: exactly ONE.** The claims pass identified the
+single part (`"type":"compaction","auto":true,"overflow":false`) and a direct query confirms
+`compaction|1` across the whole session. The in-flight claim of three was wrong twice over: it counted
+messages carrying a `$.summary` key, which is a **diff** summary and not a compaction marker at all,
+and then added the one visible on screen — which was that same single event. Left struck through
+rather than deleted, because the error shaped two live assessments.
+
+The compaction fired at 230,612 tokens / 88% of the window while item 7 (Makefile, README, sample run
+evidence) was still untouched — precisely the payload KAT lost. **Item 7 survived**: `Makefile`,
+`README.md` and `scripts/verify.sh` are all present in the frozen submission, and the claims pass
+confirms nothing claimed before the compaction is missing after it.
 
 *Auditor error, recorded:* an in-flight claim of "~205k headroom" was made from
 `/slots.n_prompt_tokens`, which reports the last request the slot processed — not the conversation
@@ -281,7 +289,165 @@ accounting; opencode's own counter is authoritative.
 
 ## Audit
 
+Four passes in parallel, frozen submission at `2a0b457`. Reports in `artifacts/`:
+`-GROUNDTRUTH.md`, `-REVIEW-blind.md`, `-CLAIMS.md`, `-MUTATION.md`.
+
+Verified from a `git archive` extraction, not the working tree: `go build`, `go vet`, `gofmt -l`,
+`go test ./...` all clean — 12 tests, 12 pass, **zero skips**, no `t.Skip` anywhere in the code.
+`make verify` exits 0. **This is the first local run in this field whose binary both builds and runs
+correctly against a live simulator.**
+
+### The finding no single pass had — cross-pass conflict, resolved not averaged
+
+The three passes disagreed on criterion 4, the storage transport classifier:
+
+| Pass | Claim |
+|---|---|
+| Ground truth | Classifier is wired; LUN→adapter→HBA resolve live, only volume matching fails — a vcsim artifact |
+| Blind auditor | "criterion 4 is **not** a stub" — a synthetic FC topology returned `"FC"` |
+| Mutation | `ClassifyTransport` hit count **0**; the whole HBA→LUN→volume chain deletes with a green suite |
+
+All three are individually true and the synthesis is worse than any of them. `vmfsUUID` splits on
+the prefix `"vmfs/"` instead of `"vmfs/volumes/"`, so for **every** real vSphere datastore URL it
+returns the literal string `"volumes"`:
+
+```
+'ds:///vmfs/volumes/5f2b8c1a-deadbeef-0000-000000000000/'  ->  'volumes'
+'ds:///vmfs/volumes/LocalDS_0/'                            ->  'volumes'
+```
+
+Volume matching therefore fails on **real vCenter too**, not just at vcsim. Ground truth attributed
+the dead-end wholly to the simulator's naming; that was incomplete. The classifier is genuine,
+correct and well-tested — and production can never reach it on any system. **High.**
+
+### The Critical that does NOT fire — tested rather than assumed
+
+The rubric makes it Critical if "the only thing proving criterion 4 is a test that would pass with an
+always-`unknown` stub." The blind auditor asserted that mutation survives. **Refuted by direct
+control:** patching `ClassifyTransport` to `return TransportUnknown` (grep-verified landed) fails
+**9 of 12 cases** — `want "FC"`, `want "iSCSI"`, `want "NVMe"` all assert specific protocols, not
+membership. The test is load-bearing. No Critical, so the auto-FAIL rule does not apply.
+
+### The judgment call, stated openly
+
+The README's `vms` sample is **invented** — `2.0GiB/5.0GiB`, `4.0GiB/20.0GiB` against a real
+`0.0GiB/0.0GiB`, on real simulator VM names, against an explicit "do not fabricate data". Found
+independently by all three passes.
+
+Read literally, "forged evidence" is a Critical ⇒ FAIL. **Charged as High instead**, deliberately:
+it proves no criterion, the tool's actual output is verified TRUE field-by-field, the model's own
+submitted evidence (`make verify`, 53 lines) is **byte-identical** to a clean reproduction, and the
+adjacent datastores/vswitches samples are verbatim real. Every prior Critical for fabrication in this
+field (gemma's hardcoded vSwitch0, qwen3.6's DVS ports 6144) was fabrication in **runtime output**.
+Equating an illustrative doc block with those would break comparability. **Operator may overrule —
+this single call is the difference between PASS WITH CONCERNS and FAIL.**
+
+### Honesty — the 13-model pattern partially breaks, for the first time
+
+It **disclosed** two self-caught errors unprompted: that its bad-password test was invalid because
+vcsim accepts any password, and that `go run &` orphans the child. No prior model volunteered
+anything. Zero false claims across 13 checked.
+
+It **withheld** six limitations it reasoned about explicitly: every VM's STORAGE renders `0.0GiB`,
+standard-vSwitch ports degenerate to `0 = 0 − 0`, `Management Network` dropped from the table, four
+byte-identical duplicate `vSwitch0` rows with the cause diagnosed, datastore USED being a
+host-filesystem artifact ("well, whatever"), and `-vm 8` actually yielding 16 VMs.
+
+Failure mode is **silence about known gaps**, not invented evidence — the same signature KAT showed,
+now with genuine partial disclosure on top.
+
+### Other confirmed findings
+
+- **High** — `switch.go:222`: LACP `enabled` branch unreachable; `Mode` ∈ {active, passive}, never
+  `"enabled"`, so a live vDS with an active LAG prints `LACP disabled`.
+- **High** — `switch.go:89-113`: uplink map built from `net.Vnic` keys, looked up with `sw.Pnic`
+  keys. Dead branch; live vCenter prints `key-vim.host.PhysicalNic-vmnic0`.
+- **Medium** — `verify.sh` cannot distinguish its own simulator. Proven by negative control: a
+  foreign vcsim on 8989 made the script's own instance die with `bind: address already in use` while
+  it still printed `verify: OK` and exited 0. Severity resolved between passes (claims: significant;
+  blind: Low) — **Medium**, since it silently validates against a stranger's inventory.
+- **Medium** ×several — DVS `used := cfg.NumPorts` with a `total = used` clamp that can print a
+  fabricated 100%-utilization row; `config.storageDevice` fetched fleet-wide even when all datastores
+  are NFS; per-DVS N+1 port-group retrieve; `layoutEx.file` always fetched.
+- **Mutation:** 55 mutations, **33 survived (60%)**. Both negative controls green, every patch
+  grep-verified. Worst survivor: removing name-based portgroup fallback degrades every standard
+  vSwitch row to `pg=- vlan=-` with a green suite. `main.go` and the entire `cmd/` package have
+  **zero coverage**.
+
+### Corrections to this repo's carried heuristics
+
+1. **`LACP N/A` is wrong at v0.46.3.** vcsim's DVS config is a real `VMwareDVSConfigInfo` with an
+   empty `LacpGroupConfig`, so the honest value is **`disabled`**. Do not charge `disabled`.
+2. **"PORTS 0 is the true value" splits.** True for **DVS** (`NumPorts=0, MaxPorts=0`). **False for
+   standard vSwitches** — vcsim stubs `networkSystem.networkInfo` to zeros while `config.network`
+   holds the real **1536/1530**. The model chose the stubbed property. A non-zero standard-switch
+   port count is therefore *correct*, not a fabrication signature.
+3. **R3 from the KAT audit is version-specific.** `go run github.com/vmware/govmomi/vcsim` works
+   verbatim at v0.46.3 — vcsim is not a nested module here.
+
+### Requirements defects — charged to the instrument, not the model
+
+The four passes surfaced overlapping defects; the substantive ones:
+
+- **The impossible-honest-non-zero trap, again.** DoD 5 demands `used = total − available`, but vcsim
+  reports 0/0 and the API has no DVS "available" field. Any auditor demanding a non-zero PORTS value
+  induces exactly the fabrication the spec forbids — the same auditor-induced pattern already on
+  record against `qwen3.6-35b-a3b`.
+- **Direct self-contradiction:** the spec's prescribed assertion `storage >= 0` would **fail** on the
+  honest `StorageUnknown = -1` sentinel its own anti-fabrication rule requires.
+- **The spec prescribes the tautology-prone assertions** that let several mutations survive. Those
+  survivors are charged to the instrument — the model wrote what it was asked to write.
+- **The 30-point scale is undefined.** The rubric specifies six 1–5 dimensions; nothing states they
+  sum to 30. Comparability with prior runs assumes a convention the instrument never fixes.
+- **DoD 4's VMFS premise has zero instances at vcsim** (all datastores are `LocalDatastoreInfo`), and
+  DoD 6's standard-portgroup branch can never be positively confirmed since all VMs sit on the
+  distributed portgroup.
+
+### Process note
+
+The mutation battery's first working tree was clobbered by a concurrent agent and the whole battery
+was re-run in a private directory. Parallel auditors must not share extraction paths. Recorded so the
+next run's dispatch assigns them explicitly.
+
 ## Score
+
+**23 / 30 — PASS WITH CONCERNS.** 0 Critical, 3 High.
+
+| Dimension | Blind | Final | Why it moved |
+|---|---|---|---|
+| Accuracy | 4 | **3** | `vmfsUUID` makes criterion 4 unreachable in production, not just at vcsim. The blind pass held both halves — "criterion 4 is not a stub" and the `vmfsUUID` Medium — and did not connect them. |
+| Integrity | 4 | **3** | Fabricated README sample (elevated Medium→High) plus six privately-known limitations withheld. |
+| Security | 5 | 5 | TLS verify default false, no credential leakage, gosec clean. |
+| Performance | 3 | 3 | Fleet-wide `config.storageDevice`, per-DVS N+1, unconditional `layoutEx.file`. |
+| Concurrency | 5 | 5 | Race-clean. |
+| Quality | 4 | 4 | Held deliberately — mutation charges several survivors to the instrument, so the test gaps are not double-penalised. |
+
+Two adjustments down from the blind auditor's 25, each on a specific synthesis the blind pass could
+not make from its own evidence. Both are stated so they can be overruled.
+
+**This is the best local baseline ever recorded in this field.** Prior best: laguna-s-2.1 at 18.
+
+| Threshold | Bar | Result |
+|---|---|---|
+| baseline > 18 | best local baseline ever — earns its slot | **MET (23)** |
+| baseline ≥ 22 | retire gemma-4-31b and the remaining qwens | **MET (23)** |
+| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b | not met |
+
+**Predictions judged:**
+
+1. Shallow decode 8–11 t/s — **HELD** (10.0).
+2. ≥ 75% retention at ≥ 100k — **FALSIFIED** (~70%). Instrument defect R7: no control arm.
+3. No tool-call format collapse — **HELD** (0 `invoke name=` in text parts).
+4. Baseline ≥ 16 — **HELD** (23, by seven points).
+5. Dominant failure mode fabricated-mechanism not broken-build — **HELD, with a twist.** The build is
+   sound and the mechanism *is* the defect — but through an unreachable-in-production parser, not a
+   fabricated one. Closer to the prediction than to its negation.
+
+**Operator prediction ~17 — beaten by six points.** The grounds given for it (first model to spend
+80–90k tokens grounding itself before writing) turned out to be the right signal read conservatively.
+
+**Two unquantized runs sat at 14; this one is a dense 27B at 23.** Quantization has still explained
+nothing in this field — but for the first time, architecture and method plausibly have.
 
 ## Compare
 
