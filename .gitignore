@@ -71,3 +71,7 @@ graphify-out/
 
 # Session scratch / handoff (never committed)
 PICKUP.md
+
+# Python bytecode from tooling scripts
+__pycache__/
+*.pyc
