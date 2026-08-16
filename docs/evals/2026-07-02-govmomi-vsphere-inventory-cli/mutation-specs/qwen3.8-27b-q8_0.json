@@ -1,0 +1,160 @@
+[
+ {
+  "id": "C1-invoke-clf",
+  "file": "internal/inventory/transport.go",
+  "desc": "classifier ClassifyTransport short-circuited to constant FC [POSITIVE CONTROL]",
+  "find": "func ClassifyTransport(devices []string, luns []LunPath, hbas map[string]HbaInfo) string {\n",
+  "replace": "func ClassifyTransport(devices []string, luns []LunPath, hbas map[string]HbaInfo) string {\n\tif true {\n\t\treturn TransportFC\n\t}\n"
+ },
+ {
+  "id": "C1b-chain-stub",
+  "file": "internal/inventory/datastores.go",
+  "desc": "whole HBA->LUN->extent traversal bypassed; every VMFS datastore reports unknown",
+  "find": "\tuuid := datastoreVolumeUUID(ds.Info.GetDatastoreInfo().Url)\n\tif uuid == \"\" {\n\t\treturn TransportUnknown\n\t}\n",
+  "replace": "\tuuid := datastoreVolumeUUID(ds.Info.GetDatastoreInfo().Url)\n\tif true {\n\t\treturn TransportUnknown\n\t}\n"
+ },
+ {
+  "id": "C2-wire-bindflag",
+  "file": "internal/config/config.go",
+  "desc": "viper BindPFlag binding deleted: --flag no longer beats env",
+  "find": "\t\tif err := v.BindPFlag(key, f); err != nil {\n\t\t\treturn fmt.Errorf(\"bind flag --%s: %w\", key, err)\n\t\t}\n",
+  "replace": "\t\t_ = f\n"
+ },
+ {
+  "id": "C3-flag-portgroup",
+  "file": "cmd/vswitches.go",
+  "desc": "--portgroup value ignored; always prints the switch listing",
+  "find": "\t\tif vswitchPortgroupName != \"\" {\n",
+  "replace": "\t\tif false {\n"
+ },
+ {
+  "id": "C4-col-lacp-gone",
+  "file": "cmd/vswitches.go",
+  "desc": "LACP column deleted from the vswitches header and every row",
+  "find": "\tfmt.Fprintln(tw, \"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tLACP\\tPORTS\\tUSED\")\n\tfor _, s := range switches {\n\t\tfor _, pg := range s.PortGroups {\n\t\t\tfmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%d\\t%d\\n\",\n\t\t\t\ts.Name,\n\t\t\t\ts.Kind,\n\t\t\t\tpg.Name,\n\t\t\t\tpg.Vlan,\n\t\t\t\tpg.Uplinks,\n\t\t\t\tpg.LACP,\n\t\t\t\tpg.TotalPorts,\n\t\t\t\tpg.UsedPorts,\n\t\t\t)\n",
+  "replace": "\tfmt.Fprintln(tw, \"SWITCH\\tSWITCH TYPE\\tPORTGROUP\\tVLAN\\tUPLINKS\\tPORTS\\tUSED\")\n\tfor _, s := range switches {\n\t\tfor _, pg := range s.PortGroups {\n\t\t\tfmt.Fprintf(tw, \"%s\\t%s\\t%s\\t%s\\t%s\\t%d\\t%d\\n\",\n\t\t\t\ts.Name,\n\t\t\t\ts.Kind,\n\t\t\t\tpg.Name,\n\t\t\t\tpg.Vlan,\n\t\t\t\tpg.Uplinks,\n\t\t\t\tpg.TotalPorts,\n\t\t\t\tpg.UsedPorts,\n\t\t\t)\n"
+ },
+ {
+  "id": "C5-col-order-ds",
+  "file": "cmd/datastores.go",
+  "desc": "datastores USED and AVAILABLE values swapped under unchanged headers",
+  "find": "\t\t\tformat.FormatBytes(ds.Used),\n\t\t\tformat.FormatBytes(ds.Available),\n",
+  "replace": "\t\t\tformat.FormatBytes(ds.Available),\n\t\t\tformat.FormatBytes(ds.Used),\n"
+ },
+ {
+  "id": "C6-sort-vms",
+  "file": "internal/inventory/vms.go",
+  "desc": "documented VM name sort reversed",
+  "find": "\tsort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })\n",
+  "replace": "\tsort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })\n"
+ },
+ {
+  "id": "C6b-sort-ds",
+  "file": "internal/inventory/datastores.go",
+  "desc": "documented datastore name sort reversed",
+  "find": "\tsort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })\n",
+  "replace": "\tsort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })\n"
+ },
+ {
+  "id": "C7-units-ram",
+  "file": "cmd/vms.go",
+  "desc": "RAM column off by 1024x (MiB shifted as KiB) under an unchanged label",
+  "find": "\t\t\tformat.FormatBytes(int64(vm.MemoryMB)<<20),\n",
+  "replace": "\t\t\tformat.FormatBytes(int64(vm.MemoryMB)<<10),\n"
+ },
+ {
+  "id": "C7b-units-gib",
+  "file": "internal/format/bytes.go",
+  "desc": "GiB divisor halved: every byte figure doubles [POSITIVE CONTROL]",
+  "find": "\tgib = int64(1) << 30\n",
+  "replace": "\tgib = int64(1) << 29\n"
+ },
+ {
+  "id": "C8-tls-forced",
+  "file": "internal/inventory/client.go",
+  "desc": "TLS certificate verification unconditionally skipped",
+  "find": "\tclient, err := govmomi.NewClient(ctx, u, cfg.Insecure)\n",
+  "replace": "\tclient, err := govmomi.NewClient(ctx, u, true)\n",
+  "report_only": true
+ },
+ {
+  "id": "C8b-insecure-dflt",
+  "file": "internal/config/config.go",
+  "desc": "built-in insecure default flipped to true",
+  "find": "\tv.SetDefault(\"insecure\", false)\n",
+  "replace": "\tv.SetDefault(\"insecure\", true)\n",
+  "report_only": true
+ },
+ {
+  "id": "C9-life-logout",
+  "file": "cmd/root.go",
+  "desc": "session Logout removed from cleanup (session leak)",
+  "find": "\t\t_ = client.Logout(ctx)\n",
+  "replace": "\t\t_ = client\n",
+  "report_only": true
+ },
+ {
+  "id": "C9b-life-view",
+  "file": "internal/inventory/props.go",
+  "desc": "container-view Destroy removed (server-side view leak per call)",
+  "find": "\tdefer func() { _ = cv.Destroy(ctx) }()\n",
+  "replace": "",
+  "report_only": true
+ },
+ {
+  "id": "C10-err-degrade",
+  "file": "internal/inventory/portgroup.go",
+  "desc": "unknown port group degrades to an empty list instead of erroring",
+  "find": "\tif len(wanted) == 0 {\n\t\treturn nil, fmt.Errorf(\"port group %q not found in inventory\", name)\n\t}\n",
+  "replace": "\tif len(wanted) == 0 {\n\t\treturn []VMInfo{}, nil\n\t}\n"
+ },
+ {
+  "id": "C10b-pg-prefix",
+  "file": "internal/inventory/portgroup.go",
+  "desc": "port-group name matching loosened from exact to prefix match",
+  "find": "\t\tif n, _ := props[\"name\"].(string); n == name {\n",
+  "replace": "\t\tif n, _ := props[\"name\"].(string); len(n) >= len(name) && n[:len(name)] == name {\n"
+ },
+ {
+  "id": "C11-ports-arith",
+  "file": "internal/inventory/vswitches.go",
+  "desc": "standard vSwitch USED reports FREE ports (used<->available inverted)",
+  "find": "\t\t\tused := numPorts - numPortsAvailable\n",
+  "replace": "\t\t\tused := numPortsAvailable\n"
+ },
+ {
+  "id": "C11b-dvs-ports",
+  "file": "internal/inventory/vswitches.go",
+  "desc": "distributed port-group USED inflated by one fabricated port",
+  "find": "\t\t\t\tUsedPorts:  usedByPG[pg.Key],\n",
+  "replace": "\t\t\t\tUsedPorts:  usedByPG[pg.Key] + 1,\n"
+ },
+ {
+  "id": "C12-props-ds",
+  "file": "internal/inventory/datastores.go",
+  "desc": "datastore host mounts no longer fetched; transport chain starved of hosts",
+  "find": "\tif err := retrieve(ctx, c, refs, []string{\"name\", \"info\", \"summary\", \"host\"}, &content); err != nil {\n",
+  "replace": "\tif err := retrieve(ctx, c, refs, []string{\"name\", \"info\", \"summary\"}, &content); err != nil {\n"
+ },
+ {
+  "id": "C12b-props-vm",
+  "file": "internal/inventory/vms.go",
+  "desc": "STORAGE reports uncommitted (provisioned-side) instead of consumed",
+  "find": "\t\tif m.Summary.Storage != nil {\n\t\t\tinfo.Committed = m.Summary.Storage.Committed\n\t\t}\n",
+  "replace": "\t\tif m.Summary.Storage != nil {\n\t\t\tinfo.Committed = m.Summary.Storage.Uncommitted\n\t\t}\n"
+ },
+ {
+  "id": "C13-lacp-dvs",
+  "file": "internal/inventory/vswitches.go",
+  "desc": "distributed switches with no LACP policy report N/A instead of disabled",
+  "find": "\treturn LACPDisabled\n}\n",
+  "replace": "\treturn LACPNA\n}\n"
+ },
+ {
+  "id": "C13b-lacp-std",
+  "file": "internal/inventory/vswitches.go",
+  "desc": "standard vSwitch port groups report LACP enabled (LACP is DVS-only)",
+  "find": "\t\t\t\tpgs[i].LACP = LACPNA\n",
+  "replace": "\t\t\t\tpgs[i].LACP = LACPEnabled\n"
+ }
+]
