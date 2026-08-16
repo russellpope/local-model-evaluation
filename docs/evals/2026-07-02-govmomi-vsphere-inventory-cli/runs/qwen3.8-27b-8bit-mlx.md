@@ -2,7 +2,7 @@
 name: qwen3.8-27b-8bit-mlx
 created: 2026-08-16
 model: Qwen3.8-27B (Apache 2.0 — hybrid linear-attention/SSM **dense** model, `model_type: qwen3_5`, `Qwen3_5ForConditionalGeneration`; 64 blocks, `full_attention_interval = 4`, 262,144 native context; natively multimodal, run **text-only**). Run at **MLX 8-bit** from `mlx-community/Qwen3.8-27B-8bit` — 6 safetensors shards, **29.53 GB**, quantization `bits 8, group_size 64, mode affine`. Local on Apple M5 Max 128 GiB via Homebrew **mlx-lm 0.31.3** (`mlx_lm.server`); driven via opencode
-stage:
+stage: wired
 score:
 ---
 
@@ -180,6 +180,103 @@ muse-glimmer-30b-bf16 14, kat-coder-v2.5-dev-bf16 14, qwen3-coder-next 13.
 **Caveat on the cull, recorded now:** every retirement decision in this field currently rests on
 **n=1 per model**, and the BF16/Q8_0 pair is direct evidence that n=1 is unstable at this bar. The
 thresholds are reproduced because they were set before this run, not because they are sound.
+
+### Wired — measured 2026-08-16
+
+Everything above this line was committed at `9acd031` with the weights still downloading.
+Below is measurement.
+
+| Gate | Result |
+|---|---|
+| 1. Arch loads **live** | **PASS** — `qwen3_5` loaded and generated. Not a module-list grep |
+| 2. Chat template accepted | **PASS** — tool schema rendered, no template exception |
+| 3. Real two-turn tool round-trip | **PASS** — `finish_reason: tool_calls`, args `{"datastore":"LocalDS_0"}`, turn 2 consumed the injected result: *"3,221,225,472 bytes, which is exactly 3 GiB"* |
+| 4. Effective context asserted | **PARTIAL** — an **84,966-token** prompt was accepted and fully prefilled. The full 262,144 is **not yet asserted**; recorded as outstanding rather than claimed |
+| 5. Thinking on | **PASS** — `reasoning` returned as **text** (374 chars), key is `reasoning` not `reasoning_content`, as predicted |
+
+Resident set **27.1 GB** — against the GGUF Q8_0 rung's 43.0 GB for the same precision. **MLX uses
+~16 GB less**, the one unambiguous win in this section.
+
+### Prediction 1 — HELD, and it falsifies the reason the rung was requested
+
+Pre-registered 15–23 t/s. Measured **16.17 t/s** median (16.17 / 16.25 / 15.67 over three
+600-token streamed generations).
+
+Against the GGUF Q8_0 rung's **18.7 t/s** that is **13.5% slower**. The bandwidth arithmetic in the
+pre-registration called this: MLX 8-bit reads 29.53 GB/token against GGUF Q8_0's 28.60 GB. The
+prediction was deliberately written against the operator's hypothesis that MLX would be faster, and
+the hypothesis is **falsified for decode**.
+
+### Prediction 2 — FALSIFIED, and this is the headline
+
+Pre-registered **≥ 350 tok/s** prompt processing. `mlx_lm.server` logs prefill progress every 2048
+tokens, which yields a free rate-vs-depth curve — reported as a **curve, not a threshold**, per R7:
+
+| depth (tok) | prefill rate |
+|---|---|
+| 6,144 | 172.4 tok/s |
+| 10,240 | **180.2** (peak) |
+| 16,384 | 155.0 |
+| 26,624 | 142.2 |
+| 36,864 | 136.3 |
+| 47,104 | 128.3 |
+| 57,344 | 121.4 |
+| 67,584 | 114.6 |
+| 69,632 | 110.9 |
+
+**Peak ~180 tok/s against a 350 bar. Falsified by roughly 2×** — and against llama.cpp's measured
+**470 tok/s** on the same model and machine, MLX prefill is **~2.6× slower at shallow depth and
+~4× slower by 70k**, still degrading.
+
+### What this means for the goal that motivated the rung
+
+The rung was requested to **cut wall-clock**. Projecting the Q8_0 run's own measured token volumes
+(426,516 prompt tokens processed, 145,454 decoded) onto both backends:
+
+| Backend | prefill | decode | compute total |
+|---|---|---|---|
+| GGUF Q8_0 (measured rates) | 0.25 h | 2.16 h | **2.41 h** |
+| MLX 8-bit (measured rates, generous 150 tok/s prefill) | 0.79 h | 2.50 h | **3.29 h** |
+
+**MLX is ~36% *worse* on compute for this task, and the gap widens with depth** because its prefill
+curve decays faster. Prediction 3 (wall-clock is governed by prompt reprocessing, not generation)
+is **supported in mechanism** — prefill is where the backends differ most — but the direction is the
+opposite of what was hoped.
+
+**Recorded caveat:** this does *not* make MLX a worse backend in general. It has 16 GB lower
+resident set, a clean `reasoning` channel, and working tool calls. It is worse **for this
+prefill-heavy 200k-token task specifically.**
+
+### Speculative decoding — draft acquired, not used
+
+`mlx-community/Qwen3.8-27B-4bit` (15 GB, 3 shards, complete) is on disk as the only viable draft,
+since MTP is unusable on this backend (see pre-registration). **Not used for this run.** Given
+prefill is the bottleneck and speculative decoding accelerates *decode only*, it addresses the
+smaller of the two terms — the same reasoning that kept MTP off the BF16 rung.
+
+### Server invocation — and a silent trap worth recording
+
+```
+mlx_lm.server --model mlx-community/Qwen3.8-27B-8bit \
+  --host 127.0.0.1 --port 8080 \
+  --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0 \
+  --max-tokens 65536 --log-level INFO
+```
+
+- **`--max-tokens` defaults to 512.** Left unset, every generation truncates at 512 tokens and the
+  run would fail in a way easily mistaken for model collapse. This is the MLX analogue of LM
+  Studio's laguna-shaped defaults.
+- **All four sampler flags must be passed.** The server defaults to `temp 0.0 / top_p 1.0 /
+  top_k 0` — greedy — which would have made this the only greedy run in the field.
+- `--log-level DEBUG` floods the log with httpcore noise; **INFO** keeps the prefill-progress lines
+  that produced the curve above.
+
+### Anomaly, logged and watched
+
+The **very first** request returned JSON containing a raw control character, which strict
+`json.loads` rejected. **Not reproduced in 5 subsequent requests** (0/5 strict-parse failures).
+Recorded because a strict client mid-run would surface it as an opaque provider error. One
+occurrence in six requests, all on the cold first call.
 
 ## Audit
 
