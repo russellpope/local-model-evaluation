@@ -52,6 +52,14 @@ bin/
 # its own parent directory, so this MUST be the full path — a bare
 # `vsphere-inventory` would hide the entire source tree, main.go included.
 /qwen3.8-27b-bf16/vsphere-inventory/vsphere-inventory
+# Q8_0 rung: unlike BF16 the model built into a `bin/` subdir and shipped TWO
+# binaries — the CLI (20 MB) and a nested vcsim harness (33 MB). The generic
+# `bin/` rule above already catches both, but it is unanchored and would hide any
+# future *source* dir named bin/. Anchor them at the paths the model actually used.
+# The entry point is qwen3.8-27b-q8_0/vsphere-inventory/main.go and the vcsim
+# harness SOURCE is tools/vcsimserver/main.go — neither may be hidden.
+/qwen3.8-27b-q8_0/vsphere-inventory/bin/vsphere-inventory
+/qwen3.8-27b-q8_0/vsphere-inventory/bin/vcsimserver
 
 # Vector DB / evaluation artifacts
 ruvector.db

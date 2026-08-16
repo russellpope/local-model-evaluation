@@ -1,0 +1,18 @@
+# Example configuration for vsphere-inventory
+#
+# Copy this file to config.yaml (or any path) and pass it with --config.
+# Every value here can also be supplied via a flag or an environment
+# variable; precedence is: flag > environment > this file > built-in default.
+
+# vCenter or ESXi endpoint. Include the /sdk path.
+url: "https://vcenter.example.com/sdk"
+
+# Credentials. May also be embedded in the URL as user:pass@host.
+username: "administrator@vsphere.local"
+password: "secret"
+
+# Skip TLS certificate verification (true) — needed for self-signed certs.
+insecure: true
+
+# Overall operation timeout (any Go duration: 30s, 2m, ...). Default 60s.
+timeout: 60s
