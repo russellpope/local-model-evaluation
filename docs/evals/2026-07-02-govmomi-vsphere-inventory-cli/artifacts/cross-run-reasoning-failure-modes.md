@@ -165,9 +165,70 @@ is worth more than a higher-scoring model that has already committed to a wrong 
 
 ---
 
+## 5. Source access mode, not source access volume
+
+Added 2026-08-20, during the `ornith-1.5-35b-a3b-bf16` run. Extends §1: reasoning *volume* is not
+a quality proxy, and neither is exploration *breadth*. What separates these runs is **how** the
+source was read.
+
+Measured from **tool calls** (`part.data`, `$.type='tool'`), not reasoning text. That distinction
+matters: §0's capture artifact is specific to `reasoning_content`, while tool calls are persisted
+by opencode under both backends — so tool-call analysis survives the LM Studio / llama-server gap
+that invalidates reasoning-text comparison.
+
+| Model | tool calls | `vim25`/`types.go` opens | `sed -n`/`grep -n` line-seek | bulk `read` | `UsedPorts` lookups |
+|---|--:|--:|--:|--:|--:|
+| ornith-1.0-35b (LM Studio) | 465 | **193** | 27 | 99 | **0** |
+| qwen3.8-27b-bf16 (llama-server) | 288 | 176 | 137 | 14 | **0** |
+| ornith-1.5-35b-a3b-bf16 (llama-server, **in flight**) | 190 | **368** | 190 | **0** | **0** |
+
+**A prior claim that ornith-1.0 "did not explore the source" was false, and was retracted before
+this section was written.** It opened the type definitions *more* than qwen3.8 did. The difference
+is access mode: ornith-1.0 bulk-`read` whole files (99 `read` calls against 27 line-seeks);
+qwen3.8 and ornith-1.5 line-seek into them (137 and 190). ornith-1.5 has issued **zero** `read`
+calls — 174 of its 190 tool calls are targeted `bash`. `vim25/types` is a ~100k-line generated
+file: bulk-reading it yields truncation, line-seeking yields the struct.
+
+### The finding that matters: deliberation ≠ verification
+
+`UsedPorts` is the field ornith-1.0 **fabricated** — its `vswitches` `USED` column always equalled
+total because the field is never populated (`runs/ornith-1.0-35b-fp16.md`). Across its 8 sessions
+it named `UsedPorts` **81 times in reasoning text** and looked it up **0 times in a tool call**. It
+thought about the field at length and never opened the struct that would have shown it empty.
+
+This is a stronger form of §1. There, volume of reasoning failed to predict score. Here, volume of
+reasoning *about the exact field that was faked* failed to prevent the fake. Reasoning about an API
+and reading it are different acts, and only the second can falsify a guess.
+
+### Live pre-registration (written before the submission exists)
+
+At write time ornith-1.5 has looked up `Lacp` **38** times (against 4 and 6 for the other two) and
+`UsedPorts` **0** times. Pre-registered prediction: **if ornith-1.5 ships a `USED`/ports column
+with no `UsedPorts` lookup in its tool calls, expect the ornith-1.0 fabrication class.** Falsified
+if it ships a correct or honestly-degraded column without such a lookup. Resolve at audit against
+the finished tree — never from this snapshot.
+
+### Caveats — these counts are not normalised
+
+- **Session scope differs.** ornith-1.0's 465 calls span 8 sessions including remediation rounds
+  and one unrelated session ("Maria sisters count riddle"); qwen3.8's 288 is baseline only;
+  ornith-1.5's 190 is a single in-flight session and will grow. **Row totals are not comparable** —
+  the claim is about *mode* (line-seek vs bulk read) and about the zero column, nothing else.
+- Markers are crude substring matches over command / filePath / pattern inputs. They establish
+  presence and rough proportion, not precise frequency.
+- ornith-1.5's row is a mid-run snapshot and must be regenerated at audit before being cited.
+- `UsedPorts = 0` is **a zero across all three rows**, including qwen3.8 at 23/30. A zero lookup
+  did not by itself produce a fabrication there, so treat it as a risk marker, not a mechanism.
+
+---
+
 ## Auditor corrections recorded
 
 - **A 15× "laguna deliberates more than muse" claim was wrong** and is withdrawn — it compared LM
   Studio's near-zero capture against llama-server's full text. See §0.
+- **"Ornith-1.0 did not explore the source before writing code" was wrong** and is withdrawn. It
+  was inferred from the *absence* of an exploration note in its run record; the session store shows
+  193 `vim25`/`types.go` opens, more than qwen3.8's 176. Recorded against the auditor, not the
+  model. See §5 for what the evidence actually supports.
 - **Ornith-397B is baseline 22 → remediated 28.** Quoting 28 in a *baseline* comparison overstates
   it; both figures are correct in their own column, and this file uses 22 for baseline-to-baseline.
