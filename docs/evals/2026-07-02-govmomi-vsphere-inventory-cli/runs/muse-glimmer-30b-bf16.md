@@ -209,7 +209,7 @@ lowest-scoring models.
 | `laguna-s-2.1` (Q4_K_M, 118B) | **18** — previously the field's best local baseline | 22 |
 | `qwen-3.6-27b` | 16 | 16 |
 | `qwen-agentworld-35b-a3b` | 16 | 23 |
-| `orinth-1.0-35b-fp16` | 16 | 25 |
+| `ornith-1.0-35b-fp16` | 16 | 25 |
 | `qwen3.6-35b-a3b-mlx` | 15 | 21 |
 | **`muse-glimmer-30b-bf16`** | **14** | — |
 | `qwen3-coder-next` | 13 | 13 |

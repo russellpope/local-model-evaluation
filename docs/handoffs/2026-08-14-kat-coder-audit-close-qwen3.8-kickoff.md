@@ -181,10 +181,10 @@ Judged on **baseline**, not remediated score. Unchanged and still unmet by every
 |---|---|---|
 | baseline > 18 | best local baseline ever recorded — earns its slot | **14 — not met** |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens | not met |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b | not met |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b | not met |
 
 Field baselines: laguna-s-2.1 **18** (still best local), qwen-3.6-27b 16, qwen-agentworld 16,
-orinth-1.0-35b 16, qwen3.6-35b-mlx 15, **muse-glimmer-30b-bf16 14**, **kat-coder-v2.5-dev-bf16 14**,
+ornith-1.0-35b 16, qwen3.6-35b-mlx 15, **muse-glimmer-30b-bf16 14**, **kat-coder-v2.5-dev-bf16 14**,
 qwen3-coder-next 13. Ornith-1.0-397B (22 → 28) is cloud-hosted and not a local-disk decision.
 
 **Two unquantized runs now sit at 14, both below a 4-bit 118B MoE at 18. Quantization has not been the

@@ -1,12 +1,12 @@
 ---
-name: orinth-1.0-35b-fp16
+name: ornith-1.0-35b-fp16
 created: 2026-07-02
-model: orinth-1.0 35B (local, fp16)
+model: ornith-1.0 35B (local, fp16)
 stage: rescored
 score: 25 / 30
 ---
 
-# Run — orinth-1.0-35b-fp16
+# Run — ornith-1.0-35b-fp16
 
 ## Wire
 

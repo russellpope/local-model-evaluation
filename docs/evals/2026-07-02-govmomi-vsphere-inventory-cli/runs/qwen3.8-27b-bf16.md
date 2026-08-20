@@ -73,7 +73,7 @@ Two adjacent risks checked and cleared in the same pass:
 `temperature 1.0, top_p 0.95, top_k 20, min_p 0.0`. Three independent sources agree: the model card's
 Best Practices, `generation_config.json`, and the GGUF's own baked `general.sampling.*`. The field
 rule is each model's own vendor sampler, which is why this run differs from the `temp 0.6` cohort
-(laguna, agents-a1, orinth, the Qwen3.6 family) — the same recorded caveat as KAT, which ran 1.0
+(laguna, agents-a1, ornith, the Qwen3.6 family) — the same recorded caveat as KAT, which ran 1.0
 because Kwaipilot ships 1.0.
 
 **One deviation retired.** llama-server applies a default `min_p = 0.05` on top of the vendor sampler;
@@ -133,10 +133,10 @@ judged against a bar set before it, not after.
 |---|---|
 | baseline > 18 | best local baseline ever recorded here — earns its slot |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b |
 
 Field baselines: laguna-s-2.1 **18** (best local), qwen-3.6-27b 16, qwen-agentworld 16,
-orinth-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, **kat-coder-v2.5-dev-bf16 14**,
+ornith-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, **kat-coder-v2.5-dev-bf16 14**,
 qwen3-coder-next 13. Ornith-1.0-397B (22 → 28) is cloud-hosted and is not a local-disk decision.
 
 ### Wired — measured 2026-08-14, all five gates green
@@ -431,7 +431,7 @@ not make from its own evidence. Both are stated so they can be overruled.
 |---|---|---|
 | baseline > 18 | best local baseline ever — earns its slot | **MET (23)** |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens | **MET (23)** |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b | not met |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b | not met |
 
 **Predictions judged:**
 

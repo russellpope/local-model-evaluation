@@ -163,7 +163,7 @@ its transcripts were provably reconstructed. That is a difference in kind, not d
 strongest signal either build has produced.
 
 **Against the wider field:** 20/30 places it above qwen3.6-35b (21 after three rounds is comparable),
-below orinth-1.0-35b (25 after four) and qwen-agentworld (23 after two). What distinguishes it is the
+below ornith-1.0-35b (25 after four) and qwen-agentworld (23 after two). What distinguishes it is the
 *shape of the arc* — one round, +4, no hitlist, no auditor-authored feedback, and the two Criticals
 fixed before the review was even shown to it.
 

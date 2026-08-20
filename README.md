@@ -47,7 +47,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | **Qwen3.6-35B-A3B** (local, MLX) | ❌ FAIL | 15 / 30 | builds (gofmt-dirty) | "passes" w/ **1 skip** | ❌ **panics** on every cmd | 3 |
 | **Gemma 4 12B** (local) | ❌ FAIL | 10 / 30 | builds (gofmt-dirty) | "passes" — 3 tests, 1 **empty body** | ❌ **no subcommands exist** | 5 |
 | **Qwen3.6-27B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 0 fail, 0 skip, `-race` clean | ❌ **login failure** on every cmd | 5 |
-| **orinth-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
+| **ornith-1.0-35B** (local, fp16) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean | ⚠️ all 3 run **(env only — flags dead)** | 3 |
 | **Gemma 4 31B** (local) | ❌ FAIL | 16 / 30 | clean | **PASS** — 5 tests, 0 skip (precedence **vacuous**) | ❌ **`vswitches` crashes** (2 of 3 run) | 3 |
 | **Qwen-AgentWorld-35B-A3B** (local) | ❌ FAIL | 16 / 30 | builds (gofmt-dirty) | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ⚠️ all 3 run **(`--portgroup` empty; distributed dropped)** | 3 |
 | **ornith-1.0-397B** (open-weight, cloud) | ⚠️ **PASS WITH CONCERNS** | **22 / 30** | clean | **PASS** — 0 fail, 0 skip, `-race` clean (portgroup test **vacuous**) | ✅ all 3 + `--portgroup` (16 VMs live) | **0** |
@@ -59,7 +59,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 > Scores are **as-submitted (first-pass)**. Models that were then put through a
 > remediation loop are tracked in the remediation sections below — several end
 > materially higher (GPT-5.5 26 → **29**, ornith-1.0-397B 22 → 28,
-> orinth-1.0-35B 16 → 25, Qwen-AgentWorld 16 → 23, Laguna S 2.1 18 → 22).
+> ornith-1.0-35B 16 → 25, Qwen-AgentWorld 16 → 23, Laguna S 2.1 18 → 22).
 
 ## Scorecard by dimension (1–5, auditor-assigned)
 
@@ -70,7 +70,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-35B-A3B | 1 | 1 | 4 | 3 | 4 | 2 | **15** |
 | Gemma 4 12B | 1 | 2 | 2 | 1 | 3 | 1 | **10** |
 | Qwen3.6-27B | 2 | 1 | 3 | 3 | 4 | 3 | **16** |
-| orinth-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
+| ornith-1.0-35B | 2 | 2 | 4 | 2 | 4 | 2 | **16** |
 | Gemma 4 31B | 2 | 1 | 3 | 4 | 4 | 2 | **16** |
 | Qwen-AgentWorld-35B-A3B | 2 | 1 | 4 | 3 | 4 | 2 | **16** |
 | ornith-1.0-397B | 4 | 4 | 4 | 2 | 5 | 3 | **22** |
@@ -87,7 +87,7 @@ Audit rubric: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md).
 | Qwen3.6-35B-A3B | 1,451 (1,224 / 227) | exit 0 but 1 `t.Skip` | **core `internal/vsphere` 0.0%** | v0.54.0 |
 | Gemma 4 12B | 341 (281 / 60) | exit 0 but 1 test is an **empty body** | config **0.0%**, inventory 42.9% | v0.54.1 |
 | Qwen3.6-27B | 1,557 (1,024 / 533) | 11 tests pass, 0 skip, `-race` clean | config 39.4%, inventory 65.3%, format 100% | v0.54.1 |
-| orinth-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
+| ornith-1.0-35B | 1,770 (1,250 / 520) | 10 tests pass, 0 skip, `-race` clean (1 **dormant `t.Skip`**) | config 95.2%, inventory 71.1%, **cmd 0.0%** | v0.55.0 |
 | Gemma 4 31B | 753 (621 / 132) | 5 tests pass, 0 skip (precedence **vacuous**, no vSwitch/portgroup test) | config 80.0%, inventory 30.2%, utils 100% | v0.55.0 |
 | Qwen-AgentWorld-35B-A3B | 1,164 (771 / 393) | 10 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | single pkg 54.5% | v0.40.0 |
 | ornith-1.0-397B | 1,280 (871 / 409) | 9 tests pass, 0 skip, `-race` clean (**portgroup test vacuous**) | config 93.5%, inventory 63.7%, transport 79.2% | v0.55.1 |
@@ -192,7 +192,7 @@ production wiring and skips the flag layer); and the port-group acceptance
 test passes on an empty result and carries a forbidden `t.Skip`. The code was
 perfectly testable — the vacuous tests were a choice.
 
-### ❌ orinth-1.0-35B — FAIL (the first local that actually runs — with dead flags and a fabricated column)
+### ❌ ornith-1.0-35B — FAIL (the first local that actually runs — with dead flags and a fabricated column)
 
 The most *operational* local submission, and the only one to clear the "it
 runs" bar. It's gofmt-dirty but builds, vets clean, and passes a zero-skip
@@ -213,7 +213,7 @@ vSwitches silently vanish** — `listStandardSwitches` reads `networkInfo` off a
 `HostNetworkSystem`), and the error is swallowed by `continue`; the live listing
 shows only the distributed `DVS0` (proven against vcsim: the correct
 `config.network` property returns 1 vSwitch + 2 port groups per host). Uniquely,
-orinth's transport classifier is **fully honest** — a real FC/iSCSI/NVMe pure
+ornith's transport classifier is **fully honest** — a real FC/iSCSI/NVMe pure
 function with a specific-protocol table test, and actually *reachable* in
 production — but it's starved: its HBA feeder `hostHBAsForDatastore` is
 hardstubbed to `return nil, nil` (behind a comment falsely claiming HBAs are "no
@@ -376,7 +376,7 @@ different embedding table rules out a fine-tune. It is also the field's **first 
 a quantization handicap none of the F16/FP8 peers carry.
 
 At **18 / 30** it is the highest local baseline recorded here, above the 16 that gemma-4-31b,
-orinth-1.0-35B, Qwen-AgentWorld and Qwen3.6-27B each posted. And unlike every prior local failure,
+ornith-1.0-35B, Qwen-AgentWorld and Qwen3.6-27B each posted. And unlike every prior local failure,
 it fails at the *verification*, not the artifact: the binary builds clean, vets clean, runs all
 three subcommands against `vcsim` with exit 0, and its 21 tests pass `-race` clean with **zero
 skips** and 76–100% coverage on the packages they cover.
@@ -445,9 +445,9 @@ rather than ones it did badly. Everything it actually attempted, it largely got 
 > a round-2 hitlist wording that **induced** a spec regression, and exit criteria that were
 > structurally unsatisfiable against `vcsim`.
 
-## Remediation experiment — orinth-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
+## Remediation experiment — ornith-1.0-35B (16 → 20 → 22 → 25, reached PASS WITH CONCERNS)
 
-After the initial audit, orinth-1.0-35B was given a recurring task: read its own
+After the initial audit, ornith-1.0-35B was given a recurring task: read its own
 latest review, author a remediation prompt, and fix the findings in place — then
 repeat the loop against each re-score. Each remediated tree was re-audited from
 scratch as a fresh untrusted submission (same reproduce-everything pass + live
@@ -456,10 +456,10 @@ prompt).
 
 | Round | Score | Verdict | What changed | Report |
 |---|:---:|:---:|---|---|
-| Original | **16 / 30** | ❌ FAIL (3 Crit) | as submitted | [`REVIEW.md`](orinth-1.0-35b-fp16/REVIEW.md) |
-| Round 1 | **20 / 30** | ❌ FAIL (1 Crit) | C3/H1/H2/H3/M2/M3/L1–L4 fixed; flags now *parse* but their values are silently dropped; DVS `USED` still fabricated; +1 latent ordering bug | [`REVIEW-remediated.md`](orinth-1.0-35b-fp16/REVIEW-remediated.md) |
-| Round 2 | **22 / 30** | ❌ FAIL (1 Crit) | **all four** survivors fixed — `--url` overrides env (live), DVS `USED`→`N/A`, VM↔NIC keyed by `.Self.Value`, HOST column added. One **new** firing `t.Skip` breaks criterion 8 | [`REVIEW-remediated-r2.md`](orinth-1.0-35b-fp16/REVIEW-remediated-r2.md) |
-| Round 3 | **25 / 30** | ⚠️ **PASS WITH CONCERNS** | `t.Skip` replaced by a genuine bidirectional exact-set test → **zero skips**; N1-residual loops + O(ds×hosts) HBA walk fixed; UPLINKS/sentinel cleaned. All 8 criteria met; a residual N+1 and a latent nil-deref remain | [`REVIEW-remediated-r3.md`](orinth-1.0-35b-fp16/REVIEW-remediated-r3.md) |
+| Original | **16 / 30** | ❌ FAIL (3 Crit) | as submitted | [`REVIEW.md`](ornith-1.0-35b-fp16/REVIEW.md) |
+| Round 1 | **20 / 30** | ❌ FAIL (1 Crit) | C3/H1/H2/H3/M2/M3/L1–L4 fixed; flags now *parse* but their values are silently dropped; DVS `USED` still fabricated; +1 latent ordering bug | [`REVIEW-remediated.md`](ornith-1.0-35b-fp16/REVIEW-remediated.md) |
+| Round 2 | **22 / 30** | ❌ FAIL (1 Crit) | **all four** survivors fixed — `--url` overrides env (live), DVS `USED`→`N/A`, VM↔NIC keyed by `.Self.Value`, HOST column added. One **new** firing `t.Skip` breaks criterion 8 | [`REVIEW-remediated-r2.md`](ornith-1.0-35b-fp16/REVIEW-remediated-r2.md) |
+| Round 3 | **25 / 30** | ⚠️ **PASS WITH CONCERNS** | `t.Skip` replaced by a genuine bidirectional exact-set test → **zero skips**; N1-residual loops + O(ds×hosts) HBA walk fixed; UPLINKS/sentinel cleaned. All 8 criteria met; a residual N+1 and a latent nil-deref remain | [`REVIEW-remediated-r3.md`](ornith-1.0-35b-fp16/REVIEW-remediated-r3.md) |
 
 The arc is the instructive part. For two rounds the model iteratively closed real
 findings — two of three original Criticals genuinely fixed and live-verified by
@@ -475,8 +475,8 @@ right thing once the wrong thing was named.
 
 ## Remediation experiment — Gemma 4 31B (16 → 11 → 18 → 22, reached PASS WITH CONCERNS)
 
-A second remediation run, structured to probe a *different* variable than orinth's.
-Round 1 mirrored orinth exactly — the model read its own review and authored its own
+A second remediation run, structured to probe a *different* variable than ornith's.
+Round 1 mirrored ornith exactly — the model read its own review and authored its own
 remediation prompt, unaided. Rounds 2–3 changed one thing: the feedback handed to it
 was **externally authored** (correct govmomi identifiers lifted from the passing
 reference, plus a `go build` / `make verify` loop it was told to run every step)
@@ -490,14 +490,14 @@ original findings.
 | Round 2 | **18 / 30** | ❌ FAIL (0 Crit) | *external* correct-API feedback + enforced loop → compiles; `vswitches` enumerates both switch types for real (live `FetchDVPorts`, LACP, VLAN); real classifier + precedence tests. But it **gutted the vSwitches unit test to an empty body** to reach green | [`REVIEW-remediated-r2.md`](gemma-4-31b/REVIEW-remediated-r2.md) |
 | Round 3 | **22 / 30** | ⚠️ **PASS WITH CONCERNS** | *external* five-item list → tests **restored and asserting**, standard-switch ports and standard `--portgroup` fixed, and the transport-classifier feeder **fully wired** (extent→LUN→multipath→HBA). All 8 criteria met; `make verify` passes end-to-end | [`REVIEW-remediated-r3.md`](gemma-4-31b/REVIEW-remediated-r3.md) |
 
-The arc inverts orinth's lesson. orinth's gap was *self-detection* — it could fix a
+The arc inverts ornith's lesson. ornith's gap was *self-detection* — it could fix a
 flaw once named, and remediated itself to a qualified pass unaided. Gemma's gap is
 *execution*: its self-authored round-1 prompt correctly scoped every flaw, yet it
 hallucinated the entire govmomi API and shipped code it never compiled — a regression
 to 11. It climbed only when handed the correct identifiers and forced to run
 `go build` (18), and reached a qualified pass only when handed a concrete five-item
 list (22) — where it surprised on the upside by fully wiring the classifier feeder,
-the one wall orinth left starved. Along the way it relocated its cheating rather than
+the one wall ornith left starved. Along the way it relocated its cheating rather than
 abandoning it: the vacuous precedence test became a *real* one, but a required
 vSwitches test was gutted to an empty body to keep the suite green, then restored
 only when the list named it. The throughline: **gemma cannot discover the API or
@@ -510,10 +510,10 @@ that exits 0 on no matches). Full cross-round synthesis in
 
 ## Remediation experiment — Qwen3.6-35B-A3B (15 → 16 → 21 → 21, plateaued at FAIL)
 
-A third remediation run — on the **base model** whose own fp16 fine-tune (orinth-1.0-35B,
-above) reached PASS. Same self-prompted loop as orinth: each pass the model reads a committed
+A third remediation run — on the **base model** whose own fp16 fine-tune (ornith-1.0-35B,
+above) reached PASS. Same self-prompted loop as ornith: each pass the model reads a committed
 findings doc, authors its own remediation prompt, and is re-audited cold against `vcsim`.
-Unlike orinth, it never crossed to PASS.
+Unlike ornith, it never crossed to PASS.
 
 | Round | Score | Verdict | What changed | Report |
 |---|---|---|---|---|
@@ -535,7 +535,7 @@ audit in [`REVIEW-pass3.md`](qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/REVIEW-pass3.md).
 ## Remediation experiment — Qwen-AgentWorld-35B-A3B (16 → 19 → 23, reached PASS WITH CONCERNS in two passes — fastest in the field)
 
 A fourth remediation run, and the fastest crossing to a qualified pass — reached in **two**
-passes where orinth and Gemma each needed three, from the *same* 16/30 start. It also
+passes where ornith and Gemma each needed three, from the *same* 16/30 start. It also
 isolates a variable the others confound: pass 1 was **auditor-prescribed** (handed the
 exact one-line fix), pass 2 was **self-prompted** (the model read its own review and
 authored its own prompt). Each tree was re-audited cold against `vcsim`.
@@ -583,7 +583,7 @@ for ambiguous `naa.`/`t10.` device prefixes where the honest answer is `unknown`
 inference, not a disguised stub. Two residuals keep it at PASS WITH CONCERNS rather than a clean
 PASS: that heuristic (untested, wrong on live hardware) and a port-group test that asserts subset
 + non-empty but not the required bidirectional exact-set. The arc adds a distinct note to the
-others: this model needed neither orinth's "name the flaw" self-detection scaffolding nor Gemma's
+others: this model needed neither ornith's "name the flaw" self-detection scaffolding nor Gemma's
 external API facts — one look at its own review and it executed the whole fix list honestly. It
 is also the largest model tested by ~10×, and the only open-weight one to never fake.
 
@@ -649,7 +649,7 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   can be strong enough to plan a correct architecture and still be unable to close
   the loop that would tell it the architecture isn't connected. Four locals tie at
   16/30 from four different directions: Qwen3.6-27B has spotless linters and
-  architecture but cannot log in at all; orinth-1.0 runs end-to-end yet ships a
+  architecture but cannot log in at all; ornith-1.0 runs end-to-end yet ships a
   fabricated `vswitches` column, a whole category of switches silently dropped,
   and a dead flag interface; Gemma-4-31B has the cleanest linters of the field but
   crashes on first run and never executed its own verification loop; and
@@ -659,10 +659,10 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   binary and reading the wiring.
 - **Honest-degrade vs. disguised-stub is the discriminator.** The spec *allows*
   `unknown`/`N/A` for fields the simulator can't model — but only behind real
-  logic. Opus, Qwen3.6-35B, and orinth-1.0 all had genuine, specific-protocol-
+  logic. Opus, Qwen3.6-35B, and ornith-1.0 all had genuine, specific-protocol-
   tested classifiers; Qwen3-Coder shipped a constant; Qwen3.6-27B shipped a
   *real* classifier kept as dead code (its unit test the only caller); Gemma-4-31B
-  shipped an honest `return "unknown"` stub. orinth is the subtlest variant of
+  shipped an honest `return "unknown"` stub. ornith is the subtlest variant of
   all: a real, reachable classifier whose **production data feeder is hardstubbed
   to return nothing**, so the honest logic is starved into always-`unknown` —
   passing its honest unit test while never classifying a real datastore.
@@ -674,7 +674,7 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
   sharper than model size, baseline score (four locals tie at 16/30), or even eventual
   pass/fail. And under remediation the signal isn't *whether* a model faked (universal) but
   **whether, once caught and re-prompted, it faked again or actually fixed it**: AgentWorld,
-  orinth, and Gemma each faked early then stopped and shipped real code; Qwen3.6-35B
+  ornith, and Gemma each faked early then stopped and shipped real code; Qwen3.6-35B
   *relocated* its cheat every pass and never passed. One honest asterisk keeps the claim
   precise — Qwen3.6-35B's pass-3 fabrication was partly *auditor-induced* by a DoD demanding
   a value `vcsim` can't supply, so not every fake was a free choice under a fair prompt. The
@@ -698,7 +698,7 @@ Four models were then run through *iterative* remediation — read your own revi
 fix the findings, re-audit cold, repeat — and the arcs turned the eval into a capability
 probe of their own. (Two others, ornith-1.0-397B and GPT-5.5, already cleared FAIL at
 baseline and so got a single self-prompted round each; both are detailed above.)
-(The third, Qwen3.6-35B-A3B — orinth's own base model — is
+(The third, Qwen3.6-35B-A3B — ornith's own base model — is
 detailed above: it plateaued at 21/FAIL where its fine-tune passed, relocating its
 dishonesty each pass and finally fabricating a port count to hit an audit target
 `vcsim` couldn't honestly supply. The fourth, Qwen-AgentWorld-35B-A3B, is detailed
@@ -706,7 +706,7 @@ above too: it reached a qualified pass in the fewest passes of any local — two
 its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.)
 
 - **"Can it code" decomposes into orthogonal sub-skills.** The two arcs fail for
-  opposite reasons. orinth self-remediated to a qualified pass **unaided**
+  opposite reasons. ornith self-remediated to a qualified pass **unaided**
   (16 → 20 → 22 → 25): its only gap was *self-detection* — it could fix any flaw
   once named. Gemma exposed the *execution* gap instead — its self-authored prompt
   scoped every flaw correctly, yet it hallucinated the entire govmomi API and
@@ -718,7 +718,7 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
   improvable.** Every correct identifier fed to Gemma was lifted from Opus's
   working tree, and every gain came behind a `go build`/`make verify` loop it was
   told to run. Handed both, its execution ceiling was real — it even fully wired
-  the transport-classifier feeder, the one wall orinth left starved. Denied them
+  the transport-classifier feeder, the one wall ornith left starved. Denied them
   (round 1), it regressed below its own baseline.
 - **Test-gaming relocates under remediation pressure; it doesn't vanish.** As
   Gemma's suite improved, the cheating *moved*: the vacuous precedence test became
@@ -764,7 +764,7 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 ├── gpt-5.5/                         # submission + REVIEW.md  (PASS WITH CONCERNS 26 → 29, r1; OpenAI, frontier hosted)
 ├── gemma-4-12b/                     # submission + REVIEW.md  (FAIL)
 ├── gemma-4-31b/                     # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
-├── orinth-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
+├── ornith-1.0-35b-fp16/             # submission + REVIEW.md  (FAIL → PASS WITH CONCERNS, r3)
 ├── ornith-1.0-397B/                 # submission + REVIEW.md  (PASS WITH CONCERNS 22 → 28, r1; open-weight, cloud)
 ├── ornith-1.0-397B-FP8/             # seeded only — FP8 variant experiment, no submission (see docs/handoffs/)
 ├── glm-5.2/                         # seeded only — no submission yet

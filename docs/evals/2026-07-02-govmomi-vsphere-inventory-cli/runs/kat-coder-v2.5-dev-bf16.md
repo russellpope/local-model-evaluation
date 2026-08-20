@@ -195,10 +195,10 @@ is judged against a bar set before it, not after.
 |---|---|
 | baseline > 18 | best local baseline ever recorded here — earns its slot |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b |
 
 Field baselines: laguna-s-2.1 **18** (best local), qwen-3.6-27b 16, qwen-agentworld 16,
-orinth-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, qwen3-coder-next 13.
+ornith-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, qwen3-coder-next 13.
 Ornith-1.0-397B (22 → 28) is cloud-hosted and is not a local-disk decision.
 
 ## Audit
@@ -421,7 +421,7 @@ MoE at 18. Quantization continues not to be the explanation for anything.
 
 **Pre-registered cull thresholds — none met.** baseline > 18 (earns its slot), ≥ 22, ≥ 25 all unmet at 14.
 Field baselines unchanged: laguna-s-2.1 **18** (still the best local baseline), qwen-3.6-27b 16,
-qwen-agentworld 16, orinth-1.0-35b 16, qwen3.6-35b-mlx 15, **muse-glimmer-30b-bf16 14**,
+qwen-agentworld 16, ornith-1.0-35b 16, qwen3.6-35b-mlx 15, **muse-glimmer-30b-bf16 14**,
 **kat-coder-v2.5-dev-bf16 14**, qwen3-coder-next 13.
 
 **What this run contributes beyond its score** is the tool-call format collapse at 229,841 tokens. That is

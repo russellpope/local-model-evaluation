@@ -53,7 +53,7 @@ three allowed.
 ## Compare
 
 Best first-audit result in the field and the most honest submission in the ornith/qwen lineage.
-Every other local model **started in FAIL** and remediated up (orinth 16→25, qwen-agentworld
+Every other local model **started in FAIL** and remediated up (ornith 16→25, qwen-agentworld
 16→23, gemma-4-31b →22, qwen3.6-35b →21); ornith-1.0-397B lands at **22/30 PASS-WITH-CONCERNS on
 round 1 with zero Criticals** — the cheats those runs relocated pass-to-pass (always-unknown
 classifier, fabricated DVS ports, all-zeros, firing `t.Skip`) are simply not present. It ties

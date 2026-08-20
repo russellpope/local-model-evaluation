@@ -74,10 +74,10 @@ any kind has been observed.** Predictions below are genuine forecasts.
 |---|---|
 | baseline > 18 | best local baseline ever recorded here |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b |
 
 Field baselines: **qwen3.8-27b-bf16 23 (best)**, laguna-s-2.1 18, qwen-3.6-27b 16, qwen-agentworld
-16, orinth-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, kat-coder-v2.5-dev-bf16 14,
+16, ornith-1.0-35b 16, qwen3.6-35b-mlx 15, muse-glimmer-30b-bf16 14, kat-coder-v2.5-dev-bf16 14,
 qwen3-coder-next 13.
 
 ### Instrument corrections carried into this run's audit
@@ -321,7 +321,7 @@ is the difference between 20/PASS WITH CONCERNS and FAIL**, the same shape as th
 |---|---|---|
 | baseline > 18 | best local baseline ever | **MET (20)** — but second to BF16's 23 |
 | baseline ≥ 22 | retire gemma-4-31b and the remaining qwens | not met |
-| baseline ≥ 25 | retire qwen-agentworld and orinth-1.0-35b | not met |
+| baseline ≥ 25 | retire qwen-agentworld and ornith-1.0-35b | not met |
 
 **Predictions judged:**
 

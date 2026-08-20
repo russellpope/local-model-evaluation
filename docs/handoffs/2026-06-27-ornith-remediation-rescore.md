@@ -1,4 +1,4 @@
-# Handoff Reference — orinth-1.0-35b remediation re-score (2026-06-27)
+# Handoff Reference — ornith-1.0-35b remediation re-score (2026-06-27)
 
 Repo: `/Users/ldh/Projects/github.com/local-model-evaluation` (git root; each model
 eval is a top-level dir). This doc lets a fresh session resume the **remediation
@@ -11,16 +11,16 @@ govmomi vSphere inventory CLI in Go (`vms` / `datastores` / `vswitches`
 subcommands). Each submission gets an adversarial, reproduce-everything audit
 (rubric: `govmomi-cli-audit-prompt.md`; task spec: `govmomi-cli-eval-prompt.md`).
 
-This session audited **orinth-1.0-35b-fp16** → **FAIL** (3 Critical, 3 High, 4
-Medium, 5 Low). Full report committed at `orinth-1.0-35b-fp16/REVIEW.md`
+This session audited **ornith-1.0-35b-fp16** → **FAIL** (3 Critical, 3 High, 4
+Medium, 5 Low). Full report committed at `ornith-1.0-35b-fp16/REVIEW.md`
 (commit `86036fa`). It's the strongest *local* model (it's the only one whose
 binary actually runs end-to-end) but still failed on flags, fabricated vswitches
 USED, and silently-dropped standard switches.
 
-**The experiment now in flight:** Russell had orinth *read its own REVIEW.md and
+**The experiment now in flight:** Russell had ornith *read its own REVIEW.md and
 author a remediation prompt* (not ingest-and-act), and is running that prompt on
 a **local branch `ornith-remediation-attempt`** (note the spelling: branch is
-"ornith", the dir is "orinth"). When it finishes, **re-score the remediated
+"ornith", the dir is "ornith"). When it finishes, **re-score the remediated
 branch from scratch** as if it were a fresh untrusted submission.
 
 ## Current state (verify with git)
@@ -29,7 +29,7 @@ branch from scratch** as if it were a fresh untrusted submission.
   the **pre-remediation baseline**. As of this handoff, HEAD == baseline (no
   remediation committed yet). The remediation may or may not have landed when you
   resume — check `git -C <repo> log --oneline -5` on the branch.
-- `main` holds the committed orinth submission + the README results table.
+- `main` holds the committed ornith submission + the README results table.
 - Untracked: `eval-prompts-by-subcommand/` (4 per-subcommand eval prompts + index
   this session authored; never committed — leave them alone, do NOT let a
   `git add -A` sweep them into a remediation commit).
@@ -40,11 +40,11 @@ branch from scratch** as if it were a fresh untrusted submission.
 1. See exactly what changed:
    ```
    git -C /Users/ldh/Projects/github.com/local-model-evaluation \
-     diff 86036fa..ornith-remediation-attempt -- orinth-1.0-35b-fp16/govmomi-cli/
+     diff 86036fa..ornith-remediation-attempt -- ornith-1.0-35b-fp16/govmomi-cli/
    ```
 2. Re-run the FULL reproduce-everything pass on the branch tree (treat as fresh
    untrusted — new code can regress untouched parts). Recipe in the next section.
-3. Write `orinth-1.0-35b-fp16/REVIEW-remediated.md` (same 11-section format as
+3. Write `ornith-1.0-35b-fp16/REVIEW-remediated.md` (same 11-section format as
    REVIEW.md) and a **before→after delta** row/annotation in the top-level
    `README.md`. Don't overwrite the original REVIEW.md (mirror the existing
    `claude-code-opus-4.7/REVIEW.md` + `REVIEW-opus-4.8.md` pattern).
@@ -79,7 +79,7 @@ precedence test likely still open → likely still short of a clean PASS.
 
 ## Reproduce-everything recipe
 
-From `orinth-1.0-35b-fp16/govmomi-cli/` on the branch:
+From `ornith-1.0-35b-fp16/govmomi-cli/` on the branch:
 ```
 gofmt -l .                       # expect empty
 go build ./...                   # exit 0
@@ -144,7 +144,7 @@ returns 1 vSwitch + 2 PGs/host. Re-use that style of probe if needed.
 - **fish shell resets cwd** after a backgrounded command ("Shell cwd was reset
   to …"). Don't rely on a persisted `cd`; use `git -C <repo>` and absolute paths.
 - Scratchpad for temp files this session:
-  `/private/tmp/claude-501/-Users-ldh-Projects-github-com-local-model-evaluation-orinth-1-0-35b-fp16/55fe55d8-1b68-45f1-b68f-6cd7d594b29a/scratchpad`
+  `/private/tmp/claude-501/-Users-ldh-Projects-github-com-local-model-evaluation-ornith-1-0-35b-fp16/55fe55d8-1b68-45f1-b68f-6cd7d594b29a/scratchpad`
   (a fresh session gets its own — just use any scratch dir, not `/tmp` directly).
 - Toolchain: go1.26.4 darwin/arm64. staticcheck/gosec/govulncheck already
   installed in `$(go env GOPATH)/bin` (= `/Users/ldh/go/bin`).
@@ -156,14 +156,14 @@ returns 1 vSwitch + 2 PGs/host. Re-use that style of probe if needed.
   the existing shared audit rubric** scoped per run. Faithful-slice principle: no
   model-specific hints injected, so each stays a valid eval. Files live in
   `eval-prompts-by-subcommand/` (untracked; commit with explicit paths if at all).
-- README results: orinth recorded as **16/30 FAIL**, tying Qwen3.6-27B; it's the
+- README results: ornith recorded as **16/30 FAIL**, tying Qwen3.6-27B; it's the
   first local that actually runs end-to-end.
 
 ## Working preferences
 
 - **Cost is not a concern** (subscription billing) — don't pause for usage warnings.
 - Auto-memory: `/Users/ldh/.claude/projects/-Users-ldh-Projects-github-com-local-model-evaluation/memory/`
-  — see `MEMORY.md` index and `orinth-1-0-35b-verdict.md` (has the full verdict +
+  — see `MEMORY.md` index and `ornith-1-0-35b-verdict.md` (has the full verdict +
   this remediation plan). Per-model verdicts also live in Open Brain.
 - Record durable verdicts/decisions to the file-memory verdict notes (per-model)
   and update `MEMORY.md`. Open Brain writeback lands as pending review.

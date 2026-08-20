@@ -417,10 +417,10 @@ pasted output) absent.
 ## Compare
 
 **The highest local baseline in the field — 18/30 as-submitted, against 16 for gemma-4-31b,
-orinth-1.0-35b, qwen-agentworld and qwen-3.6-27b, and 15 for qwen3.6-35b.** Only ornith-1.0-397B
+ornith-1.0-35b, qwen-agentworld and qwen-3.6-27b, and 15 for qwen3.6-35b.** Only ornith-1.0-397B
 (22) started higher among non-frontier runs, and that model is ~3× the total parameters running on a
 cloud endpoint rather than on this machine. Several peers *finish* higher after remediation
-(orinth 25, qwen-agentworld 23, gemma-4-31b 22, qwen3.6-35b 21) — but those are 2-4 round arcs;
+(ornith 25, qwen-agentworld 23, gemma-4-31b 22, qwen3.6-35b 21) — but those are 2-4 round arcs;
 this is round zero. It is also the field's **first Q4_K_M submission**, so it clears that bar while
 carrying a quantization handicap none of the F16/FP8 peers do.
 
@@ -464,7 +464,7 @@ round was unattended, clean, and largely competent: real topology traversal repl
 stub, a genuinely load-bearing test where there had been none, fabricated constants derived from
 the API, and *no fabrication introduced* — the datastore table correctly stayed `unknown`, which is
 the honesty check a faking model fails. Compared with the field's other arcs, this is a modest
-first step numerically (orinth 16→20, qwen-agentworld 16→19, gpt-5.5 26→29) but an unusually
+first step numerically (ornith 16→20, qwen-agentworld 16→19, gpt-5.5 26→29) but an unusually
 *clean* one: no relocated cheat, no weakened test, nothing rewritten to make an old defect stop
 registering — the pathology that defined qwen3.6-35b's entire arc and qwen-agentworld's pass 1.
 

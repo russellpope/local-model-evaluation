@@ -1,6 +1,6 @@
 # Remediation Re-Audit — vSphere Inventory CLI (govmomi)
 
-**Submission:** `orinth-1.0-35b-fp16/govmomi-cli` — **remediated** (branch `ornith-remediation-attempt`, working tree atop baseline `86036fa`)
+**Submission:** `ornith-1.0-35b-fp16/govmomi-cli` — **remediated** (branch `ornith-remediation-attempt`, working tree atop baseline `86036fa`)
 **Auditor:** Claude Opus 4.8 (independent re-audit, read-only)
 **Date:** 2026-06-27
 **Baseline:** the original audit is preserved in [`REVIEW.md`](REVIEW.md) (FAIL, 16/30).

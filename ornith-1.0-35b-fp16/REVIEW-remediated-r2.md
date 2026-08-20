@@ -1,6 +1,6 @@
 # Remediation Re-Audit (Round 2) — vSphere Inventory CLI (govmomi)
 
-**Submission:** `orinth-1.0-35b-fp16/govmomi-cli` — **remediated, round 2**
+**Submission:** `ornith-1.0-35b-fp16/govmomi-cli` — **remediated, round 2**
 (branch `remediate-round2`, working tree atop the round-1 checkpoint `166e1fa`).
 **Auditor:** Claude Opus 4.8 (independent re-audit, read-only)
 **Date:** 2026-06-28

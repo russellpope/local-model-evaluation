@@ -1,25 +1,25 @@
-# Handoff Reference — orinth-1.0-35b remediation **round 2** re-score (2026-06-28)
+# Handoff Reference — ornith-1.0-35b remediation **round 2** re-score (2026-06-28)
 
 Repo: `/Users/ldh/Projects/github.com/local-model-evaluation` (git root; each model
 eval is a top-level dir). This resumes the **round-2 remediation re-score** with
 zero prior context. Builds on the round-1 handoff:
-[`2026-06-27-orinth-remediation-rescore.md`](2026-06-27-orinth-remediation-rescore.md)
+[`2026-06-27-ornith-remediation-rescore.md`](2026-06-27-ornith-remediation-rescore.md)
 — read it for the full audit recipe, simulator-helper source, and env gotchas
 (not all repeated here).
 
 ## The story so far (score progression)
 
 A head-to-head eval of code-gen models on one govmomi vSphere inventory CLI task.
-orinth-1.0-35b (strongest *local* model) has been through:
+ornith-1.0-35b (strongest *local* model) has been through:
 
-- **Original audit → FAIL, 16/30** — `orinth-1.0-35b-fp16/REVIEW.md` (committed `86036fa`).
-- **Round-1 remediation → FAIL (improved), 20/30** — `orinth-1.0-35b-fp16/REVIEW-remediated.md`.
+- **Original audit → FAIL, 16/30** — `ornith-1.0-35b-fp16/REVIEW.md` (committed `86036fa`).
+- **Round-1 remediation → FAIL (improved), 20/30** — `ornith-1.0-35b-fp16/REVIEW-remediated.md`.
   Russell had the model author its own remediation prompt from REVIEW.md, then ran it.
 - **Round-2 remediation → THIS re-score.** Same pattern: the model authored a
   round-2 prompt from REVIEW-remediated.md and ran it on the `remediate-round2` branch.
 
 Your job: re-audit the round-2 state from scratch (fresh untrusted submission),
-score it, and write `orinth-1.0-35b-fp16/REVIEW-remediated-r2.md` tracking the
+score it, and write `ornith-1.0-35b-fp16/REVIEW-remediated-r2.md` tracking the
 16 → 20 → ?? progression. Ground truth = the **original `REVIEW.md` findings +
 the eval spec** (`govmomi-cli-eval-prompt.md`), NOT the model's self-authored prompts.
 
@@ -31,14 +31,14 @@ So once round-2 lands on top, the working tree = original + round-1 + round-2,
 all mingled.
 
 - **For scoring, that's fine** — score the *current state* vs the spec/original.
-  Cumulative diff: `git -C <repo> diff 86036fa -- orinth-1.0-35b-fp16/govmomi-cli/`.
+  Cumulative diff: `git -C <repo> diff 86036fa -- ornith-1.0-35b-fp16/govmomi-cli/`.
 - **To isolate what round-2 changed**, you need a round-1 checkpoint commit. If one
   exists (check `git log --oneline -5` on the branch), diff round2 vs it. If round-1
   was never committed, you can only see cumulative — note that limitation; don't
   fabricate a round-1-vs-round-2 delta you can't compute.
 - Recommended (if not already done): commit round-1 as a checkpoint *before* round-2,
   explicit paths only (never `git add -A` — it'd sweep `docs/` + `eval-prompts-by-subcommand/`):
-  `git add orinth-1.0-35b-fp16/govmomi-cli/ orinth-1.0-35b-fp16/REVIEW-remediated.md && git commit -m "round-1 remediation checkpoint (16->20)"`
+  `git add ornith-1.0-35b-fp16/govmomi-cli/ ornith-1.0-35b-fp16/REVIEW-remediated.md && git commit -m "round-1 remediation checkpoint (16->20)"`
 
 ## What round 2 MUST fix (the round-1 survivors — probe these first)
 
@@ -78,7 +78,7 @@ can regress these — re-run the full pass, don't assume.
 
 ## Audit recipe (condensed — full detail in the round-1 doc)
 
-From `orinth-1.0-35b-fp16/govmomi-cli/` on the branch:
+From `ornith-1.0-35b-fp16/govmomi-cli/` on the branch:
 ```
 gofmt -l .        # empty
 go build ./...    # 0
@@ -99,9 +99,9 @@ Then build + drive against the embedded simulator **with flags** (the C1 test):
 
 ## Deliverables for this round
 
-- `orinth-1.0-35b-fp16/REVIEW-remediated-r2.md` — same finding-by-finding format,
+- `ornith-1.0-35b-fp16/REVIEW-remediated-r2.md` — same finding-by-finding format,
   with a 16 → 20 → N scorecard column. Preserve `REVIEW.md` + `REVIEW-remediated.md`.
-- A before→after row/annotation in the top-level `README.md` (orinth progression).
+- A before→after row/annotation in the top-level `README.md` (ornith progression).
 - Update the file-memory verdict note + offer Open Brain writeback.
 - Do NOT commit unless Russell asks; if asked, explicit paths only.
 
@@ -149,4 +149,4 @@ auto-memory note `local-llm-memory-instrumentation.md`. The seed:
 
 - **Cost is not a concern** (subscription) — don't pause for usage warnings.
 - Auto-memory: `/Users/ldh/.claude/projects/-Users-ldh-Projects-github-com-local-model-evaluation/memory/`
-  (`MEMORY.md` index + `orinth-1-0-35b-verdict.md` has the full 16→20 history + survivor list).
+  (`MEMORY.md` index + `ornith-1-0-35b-verdict.md` has the full 16→20 history + survivor list).

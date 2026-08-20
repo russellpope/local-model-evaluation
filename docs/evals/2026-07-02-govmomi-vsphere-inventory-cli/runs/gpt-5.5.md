@@ -96,7 +96,7 @@ round-1 gap-to-Claude was the unwired live transport derivation (H1); the self-p
 genuinely closed it (real HBA→LUN→topology traversal, `ContainerView` throughout, no relocated
 cheat), so what remains between it and 30 is a single fleet-scale over-fetch (Performance 4). Against
 the **local open-weight field**, every local model started in FAIL and remediated up (ornith-1.0-397B
-22→28, orinth-1.0-35b 16→25, qwen-agentworld 16→23, gemma-4-31b →22, qwen3.6-35b →21) or stayed FAIL
+22→28, ornith-1.0-35b 16→25, qwen-agentworld 16→23, gemma-4-31b →22, qwen3.6-35b →21) or stayed FAIL
 (qwen-3.6-27b 16, qwen3-coder-next 13, gemma-4-12b 10); GPT-5.5 opened at 26 first-pass and reached
 29 in one round — but as a frontier model that's expected and not a like-for-like comparison. The
 lineage-consistent result: its self-prompted round genuinely fixed what the audit flagged, with **no

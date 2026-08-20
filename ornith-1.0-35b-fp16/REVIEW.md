@@ -1,6 +1,6 @@
 # Independent Audit — vSphere Inventory CLI (govmomi)
 
-**Submission:** `orinth-1.0-35b-fp16/govmomi-cli`
+**Submission:** `ornith-1.0-35b-fp16/govmomi-cli`
 **Auditor:** Claude Opus 4.8 (independent re-audit, read-only)
 **Date:** 2026-06-27
 **Toolchain:** go1.26.4 darwin/arm64; govmomi v0.55.0; cobra v1.10.2; viper v1.21.0
