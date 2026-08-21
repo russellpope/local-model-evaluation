@@ -1,0 +1,14 @@
+# Example configuration for vsphere-inventory.
+#
+# Precedence (highest to lowest): command-line flags > environment variables >
+# this file (via --config or $VSPHERE_CONFIG) > built-in defaults.
+#
+# Load it explicitly with:  vsphere-inventory vms --config config.yaml
+#
+url: "https://vcenter.example.com/sdk"
+username: "Administrator@vsphere-local"
+# The password is intentionally not committed; provide it via the VSPHERE_PASSWORD
+# environment variable or an interactive prompt instead.
+password: ""
+insecure: false
+timeout: "60s"
