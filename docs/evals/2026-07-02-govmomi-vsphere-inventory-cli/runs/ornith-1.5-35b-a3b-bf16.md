@@ -217,4 +217,15 @@ whole field re-scored against anchors that do not yet exist.
 
 ## Remediate
 
+**No remediation round will be run — a deliberate operator decision (2026-08-20), not an
+omission.** Rationale: the calibrated position (~16 under the proposed anchors, see
+`artifacts/2026-08-20-score-calibration-quantification.md` §5) sits below the pre-registered
+>18 slot bar and below the predecessor's era-relative position; remediation would measure
+patience, not adoption fitness. The v1 ledger is frozen under option 3-lite (flagged
+non-comparable, remap not applied); Ornith 1.5's remaining rungs (35B Q8, 9B BF16/Q8) fold into
+the successor instrument rather than running under v1. `stage` stays `audited`; `score:` stays
+**12 / 30, CONTESTED**, unchanged.
+
 ## Rescore
+
+Not applicable — no remediation round (see Remediate). 12 / 30 (contested) is final for v1.
