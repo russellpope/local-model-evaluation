@@ -60,6 +60,11 @@ bin/
 # harness SOURCE is tools/vcsimserver/main.go — neither may be hidden.
 /qwen3.8-27b-q8_0/vsphere-inventory/bin/vsphere-inventory
 /qwen3.8-27b-q8_0/vsphere-inventory/bin/vcsimserver
+# Hosted qwen-3.8 runs (Alibaba API via opencode) built a 19 MB binary at the
+# submission ROOT, next to main.go. Anchored to the file — a bare pattern would
+# hide the whole tree. Entry points are <run>/main.go; nothing else shares the name.
+/qwen-3.8-max/vsphere-inventory
+/qwen-3.8-flash/vsphere-inventory
 
 # Vector DB / evaluation artifacts
 ruvector.db
