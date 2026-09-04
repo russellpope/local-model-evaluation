@@ -1,0 +1,6 @@
+# Example vsphere-inventory configuration (keys mirror the flag names).
+url: https://vc.lab/sdk
+username: administrator@vsphere.local
+password: "secret"
+insecure: true
+timeout: 60s
