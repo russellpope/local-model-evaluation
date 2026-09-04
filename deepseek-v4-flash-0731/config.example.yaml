@@ -1,0 +1,17 @@
+# vint example configuration.
+# Precedence, highest first: command-line flag > environment variable > this file > default.
+#
+#   vint --config config.yaml vms
+#
+# Keys mirror the flags/env vars:
+#   flag --url            env VSPHERE_URL            default (none)
+#   flag --username       env VSPHERE_USERNAME       default (none)
+#   flag --password       env VSPHERE_PASSWORD       default (none)
+#   flag --insecure       env VSPHERE_INSECURE       default false
+#   flag --timeout        env VSPHERE_TIMEOUT        default 60s
+
+url: https://vc.lab/sdk
+username: administrator@vsphere.local
+password: s3cr3t
+insecure: false
+timeout: 60s
