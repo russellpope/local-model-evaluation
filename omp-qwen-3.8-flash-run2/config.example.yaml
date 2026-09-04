@@ -1,0 +1,9 @@
+# Example vSphere inventory configuration.
+# Keys mirror the flags; env vars use the VSPHERE_ prefix (VSPHERE_URL, ...).
+# Resolution precedence: --flag > VSPHERE_* env > this file > built-in default.
+
+url: https://vcenter.lab.example/sdk
+username: administrator@vsphere.local
+password: "secret"
+insecure: false
+timeout: 60s
