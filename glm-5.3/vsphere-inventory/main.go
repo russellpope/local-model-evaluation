@@ -1,0 +1,14 @@
+// Command vsphere-inventory reports vSphere inventory from a vCenter Server.
+package main
+
+import (
+	"os"
+
+	"vsphere-inventory/cmd"
+)
+
+func main() {
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
