@@ -1,0 +1,16 @@
+# vsphere-inventory connection configuration.
+#
+# Precedence (highest first): command-line flag > VSPHERE_* environment
+# variable > this file > built-in default.
+#
+# Use with:  vsphere-inventory vms --config config.example.yaml
+
+url: https://vc.lab/sdk
+username: administrator@vsphere.local
+password: "change-me"
+
+# Skip TLS certificate verification (self-signed lab certificates).
+insecure: false
+
+# Overall operation timeout. Must be a duration string (s/m/h).
+timeout: 60s
