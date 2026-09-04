@@ -1,0 +1,12 @@
+# Example YAML configuration for vsphere-inventory.
+#
+# Use with:  vsphere-inventory --config config.yaml vms
+#
+# Precedence (highest first):
+#   command-line flag > environment variable > this file > built-in default
+
+url: https://vc.lab/sdk
+username: administrator@vsphere.local
+password: change-me
+insecure: false      # set true for self-signed certificates
+timeout: 60s         # overall operation timeout per command
