@@ -1,7 +1,15 @@
 # ox-alpha-free — govmomi vSphere Inventory CLI
 
 Eval workspace. `vsphere-inventory/` holds the model's submission, frozen as delivered.
-Full audit: [`vsphere-inventory/REVIEW.md`](vsphere-inventory/REVIEW.md).
+Full audit: [`vsphere-inventory/REVIEW.md`](vsphere-inventory/REVIEW.md). Ledger record:
+[`docs/evals/…/runs/ox-alpha-free.md`](../docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/ox-alpha-free.md).
+
+**What this model is.** A **hosted frontier-class API product, not local weights**: Z.ai's
+**GLM-5.3-Flash** (320B total / 18B active MoE), run under the cloaked name `ox-alpha`
+(opencode provider `opencode`, model id `x-preview-f-free`, effort `variant = max`,
+12,542 reasoning tokens over 177 messages). Z.ai confirmed the identity on 2026-08-26, five
+days after this audit. Serving precision is undisclosed. The same model was later run
+un-cloaked as `glm-5.3-flash` and scored 23.
 
 - Build prompt: [`govmomi-cli-eval-prompt.md`](govmomi-cli-eval-prompt.md)
 - Audit prompt: [`govmomi-cli-audit-prompt.md`](govmomi-cli-audit-prompt.md)
@@ -20,22 +28,29 @@ Full audit: [`vsphere-inventory/REVIEW.md`](vsphere-inventory/REVIEW.md).
 | Concurrency | 5 | Race-clean, zero goroutines, timeout probed rather than assumed |
 | Quality | 4 | vet/staticcheck clean, real layering; `internal/cmd` at 0.0% coverage |
 
-Zero Criticals is the headline. Only `claude-code-opus-4.7`, `gpt-5.5` (r1) and
-`ornith-1.0-397B` have previously cleared an audit here without one.
+Zero Criticals is the headline. At the time of the audit only `claude-code-opus-4.7`,
+`gpt-5.5` (r1) and `ornith-1.0-397B` had cleared an audit here without one; `qwen-3.8-max`
+did so afterwards.
 
 ## Position in the field
 
-| Run | Score | Note |
-|---|--:|---|
-| claude-code-opus-4.7 | 30 | reference |
-| gpt-5.5 | 29 | after r1 |
-| ornith-1.0-397B | 28 | |
-| ornith-1.0-35b | 25 | after 3 remediation rounds |
-| **ox-alpha-free** | **25** | **first audit, no remediation** |
-| qwen-agentworld-35b-a3b | 23 | after r2 |
-| qwen3.8-27b-bf16 | 23 | best local first-audit before this |
+This is a hosted frontier-class model and belongs in the hosted comparison set, not the
+local one. Within that set (all first-audit, no remediation, as of 2026-09-03):
 
-It matches the best local arc's final score on its first pass.
+| Run | Host | Score |
+|---|---|--:|
+| **ox-alpha-free** (GLM-5.3-Flash, cloaked) | hosted, opencode | **25** |
+| qwen-3.8-max | hosted, opencode | 25 |
+| qwen-3.8-flash | hosted, opencode | 24 |
+| glm-5.3 | hosted, opencode | 23 |
+| glm-5.3-flash (same model as this row) | hosted, opencode | 23 |
+| omp-qwen-3.8-flash / -run2 | hosted, omp | 22 / 22 |
+| deepseek-v4-flash-0731, opencode-qwen3.8-flash | hosted, opencode | 18 / 18 |
+
+The 2-point gap to `glm-5.3-flash` is the same model twice and is within the run-to-run
+variance the hosted set measured (a matched-effort qwen3.8-flash repeat moved 24 → 18). The
+ledger and the root README's "Later runs" section carry the cross-run reading; this page
+does not rank it against local models.
 
 ## What was verified, not assumed
 
@@ -126,4 +141,7 @@ HBAs) and criterion 5 (real LACP and uplink state) is unverified against hardwar
 settled is that the traversal runs end to end and returns the right protocol for an injected
 iSCSI topology.
 
-Not yet on the `docs/evals` board — no run record has been created for this workspace.
+The audit predates the differential probe set developed for the September hosted audits
+(`ScsiTopology` and `MultipathInfo` injection). A blind re-audit with the current probes has
+not been run; until it is, some of the 2-point spread to `glm-5.3-flash` may be auditor
+drift rather than model variance.

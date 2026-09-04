@@ -6,8 +6,15 @@ using `govmomi`. The goal is to see how locally-runnable open-weight models hold
 up against frontier models (Claude Opus 4.7 as the reference, plus GPT-5.5) on an
 **agentic** coding task — one where "the code compiles" is not the bar; the bar is
 **"it builds, runs against a simulator, and passes a hostile, reproduce-everything
-audit."** Twelve runs so far: nine locally-runnable open-weight models, one
-open-weight cloud model (ornith-1.0-397B), and the two frontier entries.
+audit."**
+
+**The ledger is authoritative, not this page.** Every run has a record under
+[`docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/)
+and `spine eval list --dir .` prints the current board (31 rows as of 2026-09-03).
+The per-model narrative below covers the **first twelve runs** in depth; the
+nineteen rows added after it are summarised in
+[Later runs](#later-runs-2026-08--2026-09-ledger-only) and are not narrated here.
+The v1 corpus is frozen; its successor is a separate benchmark repo.
 
 Each model was given the same prompt and had to deliver complete, compiling,
 runnable source plus a hermetic unit-test suite. Each submission was then put
@@ -618,6 +625,62 @@ that lone Medium (Performance 4) is the whole distance between 29 and the Claude
 > from the round-1 read, so the two changed test files were reconstructed and diffed to run the
 > anti-test-weakening forensic anyway. Future runs commit the baseline first.
 
+## Later runs (2026-08 → 2026-09, ledger only)
+
+Nineteen rows were added after the narrative above was written. They are not
+narrated here; each links to its ledger record, which links to its `REVIEW.md`.
+Scores are first-audit unless a remediation arc is noted. **Host matters**: the
+last nine rows are vendor API products driven through a coding harness, not
+downloadable weights, and no vendor asserts that the hosted model is the open
+checkpoint.
+
+| Run | Host / serving | Score | One line |
+|---|---|:---:|---|
+| [`laguna-s-2.1-hf-Q4_K_M`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/laguna-s-2.1-hf-Q4_K_M.md) | local, HF GGUF (labelled Q4_K_M, actually mostly Q8_0) | 16 → 20 | second Laguna arm on self-built llama.cpp; one remediation round |
+| [`kat-coder-v2.5-dev-bf16`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/kat-coder-v2.5-dev-bf16.md) | local, BF16 | 14 FAIL | Qwen3.6-35B-A3B fine-tune; wrote to the repo root instead of its workspace |
+| [`muse-glimmer-30b-bf16`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/muse-glimmer-30b-bf16.md) | local, BF16 | 14 FAIL | Meta dense 30B; Integrity 1 |
+| [`qwen3.8-27b-bf16`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/qwen3.8-27b-bf16.md) | local, BF16 | 23 | best local first audit; genuine classifier that production never reaches |
+| [`qwen3.8-27b-q8_0`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/qwen3.8-27b-q8_0.md) | local, Q8_0, same producer | 20 | one dead standard-vSwitch path costs exactly the 3-point gap to BF16; weak evidence for a quantisation effect |
+| [`qwen3.8-27b-8bit-mlx`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/qwen3.8-27b-8bit-mlx.md) | local, MLX 8-bit | not run | throughput arm abandoned before any eval: MLX measured slower than GGUF on both axes |
+| [`ornith-1.5-35b-a3b-bf16`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/ornith-1.5-35b-a3b-bf16.md) | local, BF16 | 12 FAIL, **contested** | score not field-comparable; the audit exposed a rubric calibration defect that led to the v2 benchmark |
+| `ornith-1.5-35b-a3b-q8_0`, `ornith-1.5-9b-bf16`, `ornith-1.5-9b-q8_0` | local | not run | rungs folded into the successor benchmark (operator decision 2026-08-20) |
+| [`ox-alpha-free`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/ox-alpha-free.md) | hosted, opencode, effort `max` | 25 | GLM-5.3-Flash run cloaked as `ox-alpha` five days before Z.ai confirmed the identity; 0 Critical; only later run with a mutation battery (50% kill) |
+| [`qwen-3.8-max`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/qwen-3.8-max.md) | hosted (Alibaba), opencode, `xhigh` | 25 | 0 Critical, 0 High; one of two later runs whose transport classifier actually works |
+| [`qwen-3.8-flash`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/qwen-3.8-flash.md) | hosted (Alibaba), opencode, `xhigh` | 24 | classifier keyed on HBA key instead of device name; unreachable in production |
+| [`glm-5.3`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/glm-5.3.md) | hosted (Z.ai), opencode, `max` | 23 | flagship ties its own Flash; `HostStorageSystem` vs `HostSystem` MoRef key defect |
+| [`glm-5.3-flash`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/glm-5.3-flash.md) | hosted (Z.ai), opencode, `max` | 23 | same model as `ox-alpha-free`, 2 points apart, 4.4× the reasoning tokens at the same effort label |
+| [`deepseek-v4-flash-0731`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/deepseek-v4-flash-0731.md) | hosted (DeepSeek), opencode, `xhigh` | 18 | first `naa.` → FC transport fabrication; Critical charged as accuracy, not integrity (overrulable) |
+| [`omp-qwen-3.8-flash`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/omp-qwen-3.8-flash.md) | hosted (Alibaba), **omp**, effort unset | 22 | harness pilot; 2.8× the reasoning tokens of the opencode run |
+| [`opencode-qwen3.8-flash`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/opencode-qwen3.8-flash.md) | hosted (Alibaba), opencode, `xhigh` | 18 | matched-effort repeat of `qwen-3.8-flash`, one day later: 24 → 18 |
+| [`omp-qwen-3.8-flash-run2`](docs/evals/2026-07-02-govmomi-vsphere-inventory-cli/runs/omp-qwen-3.8-flash-run2.md) | hosted (Alibaba), **omp**, `xhigh` recorded | 22 | reproduces run 1; the recorded effort label moved spend by 8%, which is less than opencode's own noise |
+
+What the hosted set established, in order of weight:
+
+- **The rubric cannot resolve frontier-class models.** Same model, same task, four
+  runs of qwen3.8-flash: 18, 22, 22, 24. Two runs of the same GLM model: 23 and 25.
+  A flagship tied its own Flash. Scores in the 22–25 band are decided by which
+  wiring bug a run happens to ship, not by capability.
+- **Criterion 4 is the eval's confirmed failure mode.** Across the nine hosted
+  runs and the two local `qwen3.8-27b` rungs, the transport classifier was wrong
+  in production in eight of eleven, and three independent runs across
+  two model families landed on the identical `naa.` → FC fabrication. vcsim
+  populates no VMFS extents, HBAs or multipath data, so a correct and a dead
+  implementation both print `unknown` and every suite passes green. Only
+  injection separates them. This is a property of the task, not of any model.
+- **Effort labels are not portable.** The same `max` label spent 12,542 reasoning
+  tokens on one provider and 55,066 on another. Reasoning-token count is the
+  measured quantity; the label is at best a request. Under omp the recorded label
+  had no measurable effect at all, consistent with no thinking parameter reaching
+  the API; token counts cannot distinguish "never sent" from "sent and ignored".
+- **The harness matters more than the score shows.** omp spent 3–3.7× the
+  reasoning tokens of opencode on identical prompts, an effect an order of
+  magnitude larger than either harness's internal spread, while the score
+  comparison between them is swamped by opencode's own 6-point variance.
+
+All of this fed the v2 benchmark design. Auditor drift across the nine hosted
+audits is unquantified; a blind re-audit of `ox-alpha-free` with the current
+probe set would be the cheapest test and has not been run.
+
 ## Takeaways
 
 - **Compiling ≠ working ≠ correct.** One submission failed to compile; one
@@ -772,14 +835,38 @@ its self-prompted pass fixed exactly what its auditor-prescribed pass had faked.
 ├── qwen-3.6-27b/                    # submission + REVIEW.md  (FAIL)
 ├── qwen-agentworld-35b-a3b/         # submission (in govmomi-cli-eval-prompt/) + REVIEW*.md  (FAIL → PASS WITH CONCERNS, pass 2)
 ├── qwen3-coder-next/                # submission + REVIEW.md  (FAIL)
-└── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL, plateaued)
+├── qwen3.6-35b-a3b-ud-mxfp8_k_xl-mlx/  # submission + REVIEW.md  (FAIL, plateaued)
+├── laguna-s-2.1/                    # submission + REVIEW*.md (FAIL 18 → PASS WITH CONCERNS 22, r3; local Q4_K_M)
+│
+│   # ── later runs: see "Later runs" above; each has REVIEW.md + a ledger record ──
+├── laguna-s-2.1-hf-Q4_K_M/          # second Laguna arm (16 → 20)
+├── kat-coder-v2.5-dev-bf16/         # FAIL 14 — the model wrote its submission to ./govmomi-inventory/ instead
+├── govmomi-inventory/               #   ← KAT-Coder's actual submission tree (repo root; see .gitignore note)
+├── muse-glimmer-30b-bf16/           # FAIL 14
+├── qwen3.8-27b-bf16/                # PASS WITH CONCERNS 23  (local BF16)
+├── qwen3.8-27b-q8_0/                # PASS WITH CONCERNS 20  (local Q8_0, same producer)
+├── ornith-1.5-35b-a3b-bf16/         # FAIL 12, score CONTESTED (rubric calibration defect)
+├── ornith-1.5-35b-a3b-q8_0/         # seeded only — not run under v1
+├── ornith-1.5-9b-bf16/              # seeded only — not run under v1
+├── ornith-1.5-9b-q8_0/              # seeded only — not run under v1
+├── ox-alpha-free/                   # GLM-5.3-Flash, cloaked; hosted via opencode (25)
+├── qwen-3.8-max/                    # hosted via opencode (25)
+├── qwen-3.8-flash/                  # hosted via opencode (24)
+├── glm-5.3/                         # hosted via opencode (23)
+├── glm-5.3-flash/                   # hosted via opencode (23)
+├── deepseek-v4-flash-0731/          # hosted via opencode (18)
+├── omp-qwen-3.8-flash/              # hosted via omp — harness pilot (22)
+├── opencode-qwen3.8-flash/          # hosted via opencode — matched-effort repeat (18)
+└── omp-qwen-3.8-flash-run2/         # hosted via omp — xhigh repeat (22)
 ```
 
 Each model directory contains its full source and a `REVIEW.md` with the
 complete independent audit (verdict, scorecard, spec-conformance matrix,
 integrity findings, and reproduced evidence). Directories marked *seeded only*
 hold just the prompt copies — no model submission has been evaluated in them
-yet. The Opus 4.7 submission was
+yet. Compiled binaries are git-ignored per directory; the rules are anchored to
+full paths because several submissions named their binary after a source
+directory. The Opus 4.7 submission was
 additionally re-audited from scratch by Claude Opus 4.8
 ([`claude-code-opus-4.7/REVIEW-opus-4.8.md`](claude-code-opus-4.7/REVIEW-opus-4.8.md)),
 independently re-confirming the PASS and closing two limitations of the first
